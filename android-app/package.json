@@ -1,0 +1,11 @@
+{
+  "name": "bluenav-play-android",
+  "private": true,
+  "version": "1.0.0",
+  "description": "App Android do BlueNav Play (Capacitor). Abre o site publicado com permissão de câmera.",
+  "dependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/cli": "^8.5.3",
+    "@capacitor/core": "^8.5.3"
+  }
+}

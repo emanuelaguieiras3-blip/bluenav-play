@@ -1,0 +1,207 @@
+// MediaPipe Hands (21 pontos por mão) via câmera do celular, carregado só quando necessário.
+import { CONFIG } from '../../config.js';
+import { HandCorrector } from './handCorrector.js';
+import { GeminiAssist } from './geminiAssist.js';
+import { getCamera } from '../core/cameraFeed.js';
+
+const MP = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${CONFIG.MEDIAPIPE_VERSION}`;
+const MODEL = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
+const HFOV = CONFIG.CAMERA_HFOV * Math.PI / 180; // campo de visão horizontal da câmera do celular
+
+export class HandTracker {
+  constructor() {
+    this.video = null;
+    this.landmarker = null;
+    this.running = false;
+    this.mirror = false;
+    this.slots = null;           // até 2 mãos rastreadas por posição (não pelo rótulo)
+    this.hands = [];          // [{label, pontos:[[x,y,z]], gesto, confianca, pinchDist}] espaço da câmera
+    this.lastVideoTime = -1;
+    this.lastT = 0;
+    this.history = [];        // janela de frames crus para o Gemini
+    this.gemini = new GeminiAssist();
+    this.detectMs = 0;
+    this.minInterval = 0;
+    this._lastDetect = 0;
+    this.worker = null; this.busy = false; this.mode = null;
+  }
+
+  async start({ facing = 'environment', onStatus = () => {} } = {}) {
+    onStatus('Abrindo a câmera…');
+    // a mesma câmera do passthrough; para a detecção o quadro é reduzido (o MediaPipe usa 192/224 px)
+    this.video = await getCamera(facing);
+    this.mirror = facing === 'user';
+    onStatus('Carregando rastreamento de mãos…');
+    // 1º: worker (não trava a renderização). 2º: thread principal, se o navegador não suportar.
+    try { await this._startWorker(); this.mode = 'worker'; }
+    catch (e) {
+      console.warn('Worker de mãos indisponível, usando a thread principal:', e);
+      const vision = await import(/* @vite-ignore */ `${MP}/vision_bundle.mjs`);
+      const fileset = await vision.FilesetResolver.forVisionTasks(`${MP}/wasm`);
+      const opts = (delegate) => ({
+        baseOptions: { modelAssetPath: MODEL, delegate },
+        runningMode: 'VIDEO', numHands: 2,
+        minHandDetectionConfidence: 0.5, minHandPresenceConfidence: 0.5, minTrackingConfidence: 0.5,
+      });
+      try { this.landmarker = await vision.HandLandmarker.createFromOptions(fileset, opts('GPU')); }
+      catch { this.landmarker = await vision.HandLandmarker.createFromOptions(fileset, opts('CPU')); }
+      this.mode = 'main';
+    }
+    this.running = true;
+    onStatus('Mãos prontas.');
+  }
+
+  _startWorker() {
+    if (typeof Worker === 'undefined' || typeof createImageBitmap === 'undefined') return Promise.reject(new Error('sem suporte'));
+    return new Promise((resolve, reject) => {
+      const w = new Worker(new URL('./handWorker.js', import.meta.url));
+      const timer = setTimeout(() => { w.terminate(); reject(new Error('tempo esgotado')); }, 30000);
+      w.onmessage = (e) => {
+        const m = e.data;
+        if (m.type === 'ready') { clearTimeout(timer); this.worker = w; this.delegate = m.delegate; resolve(); }
+        else if (m.type === 'error') { clearTimeout(timer); w.terminate(); reject(new Error(m.message)); }
+        else if (m.type === 'result') this._onResult(m);
+      };
+      w.onerror = (e) => { clearTimeout(timer); w.terminate(); reject(e); };
+      w.postMessage({ type: 'init', base: MP, model: MODEL });
+    });
+  }
+
+  _onResult(m) {
+    this.busy = false;
+    this.detectMs = this.detectMs * 0.85 + m.ms * 0.15;
+    // se o celular não dá conta de 30 Hz, espaça um pouco (a mão é suavizada entre detecções)
+    this.minInterval = this.detectMs > 45 ? 50 : this.detectMs > 30 ? 40 : 30;
+    if (!m.res) return;
+    const dt = this.lastT ? (m.t - this.lastT) / 1000 : 1 / 30;
+    this.lastT = m.t;
+    this._process(m.res, dt, m.t);
+  }
+
+  stop() {
+    this.running = false;
+    this.worker?.terminate();
+    if (this.video && this.video.srcObject) this.video.srcObject.getTracks().forEach((t) => t.stop());
+  }
+
+  update(now) {
+    if (!this.running || this.video.readyState < 2) return;
+    if (this.video.currentTime === this.lastVideoTime) return;
+    if (now - this._lastDetect < this.minInterval) return;
+    if (this.mode === 'worker') {
+      if (this.busy && now - this._lastDetect > 1500) this.busy = false; // proteção se um quadro se perder
+      if (this.busy) return; // um quadro por vez: nunca acumula fila
+      this.busy = true;
+      this.lastVideoTime = this.video.currentTime;
+      this._lastDetect = now;
+      const vw = this.video.videoWidth, vh = this.video.videoHeight;
+      const opts = vw > 640 ? { resizeWidth: 480, resizeHeight: Math.round(480 * vh / vw), resizeQuality: 'low' } : undefined;
+      (opts ? createImageBitmap(this.video, opts).catch(() => createImageBitmap(this.video)) : createImageBitmap(this.video)).then((bmp) => {
+        this.worker.postMessage({ type: 'frame', bitmap: bmp, t: now }, [bmp]);
+      }).catch(() => { this.busy = false; });
+      return;
+    }
+    // reserva: thread principal
+    this.lastVideoTime = this.video.currentTime;
+    const t0 = performance.now();
+    let res;
+    try { res = this.landmarker.detectForVideo(this.video, now); } catch { return; }
+    this.detectMs = this.detectMs * 0.9 + (performance.now() - t0) * 0.1;
+    this.minInterval = this.detectMs > 28 ? 50 : this.detectMs > 18 ? 33 : 0;
+    this._lastDetect = now;
+    const dt = this.lastT ? (now - this.lastT) / 1000 : 1 / 30;
+    this.lastT = now;
+    this._process(res, dt, now);
+  }
+
+  _process(res, dt, now) {
+    const vw = this.video.videoWidth || 640, vh = this.video.videoHeight || 480;
+    const ar = vh / vw;
+    const f = 1 / (2 * Math.tan(HFOV / 2)); // focal em unidades da largura da imagem
+    const sx = this.mirror ? -1 : 1;
+    const n = res.landmarks ? res.landmarks.length : 0;
+    const dets = [];
+    for (let h = 0; h < n; h++) {
+      const lm = res.landmarks[h], wl = res.worldLandmarks[h];
+      const cat = res.handednesses?.[h]?.[0] || res.handedness?.[h]?.[0] || { categoryName: 'Right', score: 0.8 };
+      // Profundidade: compara o tamanho real (metros) com o tamanho na imagem
+      let wSum = 0, iSum = 0;
+      for (const [a, b] of [[0, 5], [0, 17], [5, 17], [0, 9]]) {
+        wSum += Math.hypot(wl[a].x - wl[b].x, wl[a].y - wl[b].y);
+        iSum += Math.hypot(lm[a].x - lm[b].x, (lm[a].y - lm[b].y) * ar);
+      }
+      const d = Math.min(0.9, Math.max(0.18, (f * wSum) / Math.max(1e-4, iSum)));
+      // posição aproximada do pulso só para associar a detecção à mão certa
+      const guess = [sx * ((lm[0].x - 0.5) * d) / f, -((lm[0].y - 0.5) * ar * d) / f, -d];
+      // O MediaPipe supõe imagem espelhada (selfie); nossos quadros não são espelhados,
+      // e a câmera frontal é espelhada por nós em 3D. Daí a mão "real" no nosso espaço:
+      const effRight = (cat.categoryName === 'Left') !== this.mirror;
+      dets.push({ lm, wl, d, guess, score: cat.score ?? 0.9, effRight });
+    }
+
+    // Associa cada detecção à mão rastreada mais próxima (o rótulo esquerda/direita
+    // do MediaPipe pisca entre frames e não serve para isso)
+    const slots = this.slots || (this.slots = [0, 1].map((id) => ({ id, corrector: new HandCorrector(), lastSeen: -1e9, wrist: null, d: 0, vote: 0, out: null })));
+    const used = new Set();
+    const pairs = [];
+    for (const det of dets) for (const sl of slots) {
+      if (!sl.wrist || now - sl.lastSeen > 400) continue;
+      pairs.push([Math.hypot(det.guess[0] - sl.wrist[0], det.guess[1] - sl.wrist[1], det.guess[2] - sl.wrist[2]), det, sl]);
+    }
+    pairs.sort((x, y) => x[0] - y[0]);
+    for (const [dist, det, sl] of pairs) {
+      if (det.slot || used.has(sl) || dist > 0.25) continue;
+      det.slot = sl; used.add(sl);
+    }
+    for (const det of dets) {
+      if (det.slot) continue;
+      const sl = slots.filter((x) => !used.has(x)).sort((x, y) => x.lastSeen - y.lastSeen)[0];
+      if (!sl) continue;
+      sl.corrector.reset(); sl.d = 0; sl.vote = 0; sl.out = null;
+      det.slot = sl; used.add(sl);
+    }
+
+    for (const det of dets) {
+      const sl = det.slot; if (!sl) continue;
+      const { lm, wl } = det;
+      // Profundidade suavizada: o ruído da profundidade também mexia a mão para os lados
+      if (!sl.d) sl.d = det.d;
+      else { const jump = Math.abs(det.d - sl.d); sl.d += (det.d - sl.d) * (jump > 0.12 ? 0.6 : 0.22); }
+      const d = sl.d;
+      const wx = sx * ((lm[0].x - 0.5) * d) / f;
+      const wy = -((lm[0].y - 0.5) * ar * d) / f;
+      const pts = new Array(21);
+      for (let i = 0; i < 21; i++) pts[i] = [wx + sx * (wl[i].x - wl[0].x), wy - (wl[i].y - wl[0].y), -d - (wl[i].z - wl[0].z)];
+      // lado da mão por votação (estável mesmo se o rótulo piscar)
+      sl.vote = sl.vote * 0.85 + (det.effRight ? 0.15 : -0.15);
+      const chir = sl.vote >= 0 ? 1 : -1;
+      const r = sl.corrector.process(pts, dt, det.score, chir);
+      sl.lastSeen = now; sl.wrist = pts[0];
+      const c = sl.corrector;
+      sl.out = { id: sl.id, label: chir > 0 ? 'Right' : 'Left', pontos: r.pontosCorrigidos, gesto: r.gesto, confianca: r.confianca, pinchDist: c.pinchDist, pinchStrength: c.pinchStrength, palmFacing: c.palmFacing, raw: pts, stale: false };
+    }
+
+    // Perda de rastreamento por instantes (mão passa rápido, borrão): mantém a última pose
+    // por até 150 ms para não soltar a pinça nem "clicar" sem querer
+    const out = [];
+    for (const sl of slots) {
+      if (!sl.out) continue;
+      const age = now - sl.lastSeen;
+      if (age === 0) out.push(sl.out);
+      else if (age < 150) out.push({ ...sl.out, stale: true });
+      else sl.out = null;
+    }
+    this.hands = out;
+
+    // Janela de ~0,5s da mão principal para o Gemini (calibração em segundo plano)
+    const main = out.find((o) => !o.stale);
+    if (main) {
+      this.history.push({ t: now, pontos: main.raw });
+      while (this.history.length && now - this.history[0].t > 500) this.history.shift();
+      const corr = slots[main.id].corrector;
+      this.gemini.maybeSend(performance.now(), this.history.slice(), main.gesto, (res2) => {
+        corr.applyReference(res2.pontosCorrigidos, res2.confianca);
+      });
+    }
+  }
+}

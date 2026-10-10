@@ -1,0 +1,13 @@
+{
+  "appId": "com.bluenav.play",
+  "appName": "BlueNav Play",
+  "webDir": "www",
+  "server": {
+    "url": "https://bluenav-play.vercel.app",
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#0e0f11"
+  }
+}

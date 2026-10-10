@@ -1,0 +1,7 @@
+node_modules/
+.vercel/
+.claude/
+.claude-flow/
+android-app/android/
+android-app/node_modules/
+*.apk

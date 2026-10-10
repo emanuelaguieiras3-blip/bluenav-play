@@ -1,0 +1,72 @@
+:root {
+  --bg: #0e0f11;
+  --card: #18191c;
+  --surface: #26282d;
+  --line: rgba(255, 255, 255, 0.08);
+  --fg: #f2f3f5;
+  --muted: #a3a7b0;
+  --accent: #2d88ff;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; height: 100%; overflow: hidden;
+  background: var(--bg); color: var(--fg);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: none; user-select: none;
+}
+canvas { display: block; position: fixed; inset: 0; }
+
+#start {
+  position: fixed; inset: 0; z-index: 10;
+  display: flex; align-items: center; justify-content: center; padding: 16px;
+  background: var(--bg);
+  overflow-y: auto; touch-action: pan-y;
+}
+#start.hidden { display: none; }
+.card {
+  width: 100%; max-width: 400px; padding: 32px 24px 24px;
+  background: var(--card);
+  border: 1px solid var(--line); border-radius: 28px;
+}
+.logo { font-size: 26px; font-weight: 600; letter-spacing: -0.3px; display: flex; align-items: center; gap: 10px; }
+.logo b { font-weight: 600; color: var(--muted); }
+.logo .dot { width: 14px; height: 14px; border-radius: 50%; border: 3px solid var(--fg); }
+.tag { color: var(--muted); margin: 8px 0 28px; font-size: 15px; line-height: 1.45; }
+.buttons { display: flex; flex-direction: column; gap: 10px; }
+button {
+  font: inherit; font-size: 16px; font-weight: 600; padding: 15px 18px; border-radius: 999px; cursor: pointer;
+  border: 0; background: var(--surface); color: var(--fg);
+  transition: background .15s ease, transform .1s ease;
+}
+button:hover { background: #33363c; }
+button.primary { background: var(--fg); color: #111214; }
+button.primary:hover { background: #ffffff; }
+button:active { transform: scale(0.98); }
+.check { display: flex; gap: 12px; align-items: center; margin-top: 16px; color: var(--muted); font-size: 14px; }
+.check input { width: 18px; height: 18px; accent-color: var(--accent); }
+.status { margin: 18px 0 0; min-height: 1.4em; color: var(--muted); font-size: 13px; }
+.help { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+.help summary { cursor: pointer; color: var(--fg); font-weight: 600; }
+.help ul { padding-left: 18px; line-height: 1.6; margin-bottom: 0; }
+
+#divider { position: fixed; z-index: 3; top: 0; bottom: 0; left: 50%; width: 2px; margin-left: -1px; background: #000; pointer-events: none; }
+
+#video-layer { position: fixed; inset: 0; z-index: 6; background: rgba(0, 0, 0, 0.92); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; }
+#video-layer[hidden] { display: none; }
+#video-slots { display: flex; width: 100%; height: calc(100% - 76px); align-items: center; justify-content: center; }
+#video-slots.flat > div { width: min(92vw, calc((100vh - 96px) * 16 / 9)); aspect-ratio: 16 / 9; border-radius: 20px; overflow: hidden; }
+#video-slots.stereo > div { width: 50%; height: 100%; }
+#video-slots iframe { width: 100%; height: 100%; border: 0; }
+#video-close { background: var(--fg); color: #111214; padding: 12px 22px; }
+/* passthrough ativo: o vídeo flutua sobre o mundo real (a câmera aparece em volta) */
+#video-layer.pt { background: transparent; }
+#video-layer.pt #video-slots.stereo > div { padding: 9% 7%; }
+#video-layer.pt #video-slots.stereo iframe { border-radius: 14px; }
+
+#debug {
+  position: fixed; z-index: 7; left: 8px; top: 8px; max-width: 46vw; max-height: 60vh; overflow: hidden;
+  font: 11px/1.35 ui-monospace, Consolas, monospace; white-space: pre-wrap;
+  background: rgba(0, 0, 0, 0.7); color: #e6e6e6; padding: 6px 8px; border-radius: 10px; pointer-events: none;
+}
