@@ -22,6 +22,8 @@ export default {
     const info = ctx.label('Pince para selecionar · olhe para a palma e pince para abrir o menu', { w: 1.3, h: 0.07, size: 0.36, sub: null });
     info.position.set(0, 2.55, -2.2); info.rotation.x = 0.35;
     root.add(info);
+    const external = ctx.button({ label: 'Roblox · Rec Room · VRChat · Minecraft', w: 0.85, h: 0.09, onClick: () => ctx.app.openExternalApps() });
+    external.position.set(0, 1.03, -1.2); root.add(external);
 
     return {
       update(dt, t) {

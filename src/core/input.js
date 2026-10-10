@@ -109,14 +109,27 @@ export class Input {
         let sm = disp.get(key);
         if (!sm || sm.age > 0.2) { sm = { p: h.pontos.map((q) => q.slice()), age: 0 }; disp.set(key, sm); }
         else for (let i = 0; i < 21; i++) for (let c = 0; c < 3; c++) sm.p[i][c] += (h.pontos[i][c] - sm.p[i][c]) * k;
+        // Interpolar juntas independentemente encurta dedos durante uma dobra.
+        // Reprojeta cada segmento na medida corrigida, preservando a palma.
+        for (const chain of [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16], [17, 18, 19, 20]]) {
+          for (let j = 1; j < chain.length; j++) {
+            const a = chain[j - 1], b = chain[j];
+            const target = h.pontos[b].map((v, c) => v - h.pontos[a][c]);
+            let direction = sm.p[b].map((v, c) => v - sm.p[a][c]);
+            const length = Math.max(0.004, Math.hypot(...target));
+            if (Math.hypot(...direction) < 0.001) direction = target;
+            const scale = length / Math.max(0.001, Math.hypot(...direction));
+            for (let c = 0; c < 3; c++) sm.p[b][c] = sm.p[a][c] + direction[c] * scale;
+          }
+        }
         sm.age = 0;
         const pts = sm.p.map((p) => new THREE.Vector3(p[0], p[1], p[2]).applyMatrix4(cam.matrixWorld));
         const palm = pts[0].clone().add(pts[5]).add(pts[17]).multiplyScalar(1 / 3);
         const dir = pts[9].clone().sub(pts[0]).normalize();
-        this.hands.push({ id: key, label: h.label, points: pts, gesture: h.gesto, confianca: h.confianca, palm, dir, tip: pts[8], pinchStrength: h.pinchStrength ?? 0, palmFacing: h.palmFacing ?? 0 });
+        this.hands.push({ id: key, label: h.label, points: pts, gesture: h.gesto, confianca: h.confianca, stale: !!h.stale, palm, dir, tip: pts[8], pinchStrength: h.pinchStrength ?? 0, palmFacing: h.palmFacing ?? 0 });
       }
       for (const [key, sm] of disp) if (!seen.has(key)) { sm.age += dt; if (sm.age > 0.5) disp.delete(key); }
-    }
+    } else this._disp?.clear();
 
     // ---- ponteiros: um por mão (ou controle). Uma mão sozinha faz tudo. ----
     const active = [];
@@ -139,31 +152,28 @@ export class Input {
       this._systemGesture(dt);
       const camQ = cam.getWorldQuaternion(new THREE.Quaternion());
       const invQ = camQ.clone().invert();
-      const yawQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), new THREE.Euler().setFromQuaternion(camQ, 'YXZ').y);
       for (const h of this.hands) {
         const p = this._ptr('hand' + h.id, 'hand');
         p.hand = h;
+        p.stale = h.stale || h.confianca < 0.3;
         // lado: pela posição em relação à cabeça, com folga para não ficar trocando
         const lx = h.palm.clone().sub(eye).applyQuaternion(invQ).x;
-        if (!p.side || (p.side === 'right' && lx < -0.06) || (p.side === 'left' && lx > 0.06)) p.side = lx >= 0 ? 'right' : 'left';
-        // Raio do Quest: do ombro do mesmo lado, passando entre o polegar e a base do indicador
-        const pose = h.points[5].clone().lerp(h.points[2], 0.5);
-        const shoulder = eye.clone().add(new THREE.Vector3(p.side === 'right' ? 0.17 : -0.17, -0.2, 0.05).applyQuaternion(yawQ));
-        const dir = pose.clone().sub(shoulder).normalize();
-        if (p.fresh) p.rayDir.copy(dir); else p.rayDir.lerp(dir, Math.min(1, dt * 14)).normalize();
-        p.origin.copy(pose); p.ray.origin.copy(pose); p.ray.direction.copy(p.rayDir);
+        p.side = h.label === 'Right' ? 'right' : h.label === 'Left' ? 'left' : (p.side || (lx >= 0 ? 'right' : 'left'));
         // indicador esticado e os outros dobrados (instantâneo, sem esperar 0,4s):
         // o alvo é o que está "embaixo" da ponta do dedo, visto do olho — leve o dedo ao botão
         const P = h.points, W = P[0], dw = (i) => P[i].distanceTo(W);
-        const ri = dw(8) / dw(6), rm = dw(12) / dw(10), rr = dw(16) / dw(14); // esticado ≈ 1,5 · dobrado < 1,2
-        p.fingerAim = h.gesture !== 'pinça' && (h.gesture === 'apontando' || (ri > 1.3 && rm < 1.2 && rr < 1.2 && ri - Math.max(rm, rr) > 0.2));
-        if (p.fingerAim) {
-          p.ray.origin.copy(eye); p.ray.direction.copy(P[8]).sub(eye).normalize();
-          p.origin.copy(P[8]); p.rayDir.copy(p.ray.direction);
-          p.tipDepth = P[8].distanceTo(eye);
-        }
+        const ri = dw(8) / Math.max(0.001, dw(6)), rm = dw(12) / Math.max(0.001, dw(10)), rr = dw(16) / Math.max(0.001, dw(14));
+        // Pinçar após apontar mantém o modo de mira; trocar para o ombro no
+        // meio do clique fazia o alvo escapar sem o usuário mover a mão.
+        p.fingerAim = h.gesture === 'pinça' ? !!p.fingerAim : (h.gesture === 'apontando' || (ri > 1.3 && rm < 1.2 && rr < 1.2 && ri - Math.max(rm, rr) > 0.2));
+        // Every hand gesture uses the index tip as origin. Display interpolation
+        // already smooths the tip; a second ray filter would misalign selection.
+        p.ray.origin.copy(P[8]); p.origin.copy(P[8]);
+        p.ray.direction.copy(P[8]).sub(eye).normalize();
+        p.rayDir.copy(p.ray.direction);
+        p.tipDepth = P[8].distanceTo(eye);
         p.handPos.copy(h.points[4]).lerp(h.points[8], 0.5);
-        p.gesture = h.gesture; p.pinchStrength = h.pinchStrength; p.pokeTip = h.tip;
+        p.gesture = h.gesture; p.pinchStrength = h.pinchStrength; p.pokeTip = p.stale ? null : h.tip;
         // a mão do gesto de sistema (palma virada) não aponta nem pinça no mundo
         p.system = h === this.systemHand;
         p.rawPinch = h.gesture === 'pinça' && !p.system;
@@ -201,8 +211,9 @@ export class Input {
     const screenPinch = this.mouseDown || this.touchDown;
     for (const p of active) {
       p.main = p === main;
-      const pinch = p.rawPinch || (p.main && screenPinch);
-      p.pinchDown = pinch && !p.prevPinch; p.pinchUp = !pinch && p.prevPinch; p.pinch = pinch; p.prevPinch = pinch;
+      if (p.source !== 'hand') p.stale = p.source === 'gaze' && !!tracker?.running;
+      const pinch = p.stale ? p.prevPinch : p.rawPinch || (p.main && screenPinch);
+      p.pinchDown = !p.stale && pinch && !p.prevPinch; p.pinchUp = !p.stale && !pinch && p.prevPinch; p.pinch = pinch; p.prevPinch = pinch;
       if (p.source !== 'hand') { p.pokeTip = null; p.pinchStrength = pinch ? 1 : (p.pinchStrength || 0); }
       if (p.fresh || dt <= 0) p.vel.set(0, 0, 0); else p.vel.copy(p.handPos).sub(p.prevHandPos).divideScalar(dt);
       if (p.vel.length() > 30) p.vel.set(0, 0, 0);
@@ -241,12 +252,11 @@ export class Input {
   _systemGesture(dt) {
     // a palma precisa ficar virada para você por 0,25s antes (como o ícone aparecendo no Quest);
     // durante uma pinça já iniciada, a mão continua valendo mesmo se girar um pouco
-    const cand = this.hands.find((h) => h.palmFacing > (this.systemBusy ? 0.35 : 0.6));
+    const cand = this.hands.find((h) => !h.stale && h.confianca >= 0.45 && h.palmFacing > (this.systemBusy ? 0.35 : 0.6));
     this._palmT = cand ? (cand.gesture !== 'pinça' ? (this._palmT || 0) + dt : (this._palmT || 0)) : 0;
     const sys = cand && (this._palmT >= 0.25 || this.systemBusy) ? cand : null;
     this.systemHand = sys || null;
     if (!sys) {
-      if (this.systemBusy && !this._sysFired && this._sysT > 0.04 && this._sysT < 0.8) this.menuRequest = true;
       this.systemBusy = false; this._sysT = 0; this._sysFired = false; this.systemProgress = 0; return;
     }
     if (sys.gesture === 'pinça') {

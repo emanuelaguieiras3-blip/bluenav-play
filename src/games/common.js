@@ -68,12 +68,18 @@ export class GrabMover {
   update(_unused, dt, scale = 1) {
     const d = new THREE.Vector3();
     if (!this.grips.size) return d;
+    const active = new Set((this.ctx.input.pointers || []).filter((p) => !p.system).map((p) => p.id));
+    for (const [id] of this.grips) if (!active.has(id)) this.grips.delete(id);
+    if (!this.grips.size) { this.vel.set(0, 0, 0); return d; }
+    let moving = 0;
     for (const g of this.grips.values()) {
       const now = this._local(g.p);
+      if (g.p.stale) { g.last.copy(now); continue; }
+      moving++;
       d.add(g.last.clone().sub(now));
       g.last.copy(now);
     }
-    d.multiplyScalar(scale / this.grips.size);
+    d.multiplyScalar(scale / Math.max(1, moving));
     if (d.length() > 0.4) d.setLength(0.4);
     this.ctx.rig.position.add(d);
     this.vel.copy(d).divideScalar(Math.max(dt, 1e-3));
@@ -82,7 +88,7 @@ export class GrabMover {
 }
 
 // Ponteiros (mãos) disponíveis; com uma mão só, devolve só ela
-export function pointers(ctx) { return (ctx.input.pointers || []).filter((p) => !p.system); }
+export function pointers(ctx) { return (ctx.input.pointers || []).filter((p) => !p.system && !p.stale); }
 // mão dominante (direita) e a outra; com uma mão só, a dominante é ela e a outra é null
 export function hands2(ctx) {
   const ps = pointers(ctx);
@@ -106,7 +112,8 @@ export function lod(near, far, dist = 18) {
 const MOBILE = detectDevice().mobile;
 const PBR_ONLY = ['roughness', 'metalness', 'roughnessMap', 'metalnessMap', 'clearcoat', 'clearcoatRoughness', 'envMapIntensity', 'transmission', 'ior', 'thickness'];
 export function std(opts = {}) {
-  if (!MOBILE) return new THREE.MeshStandardMaterial({ roughness: 0.8, metalness: 0, ...opts });
+  if (!MOBILE) return new THREE.MeshStandardMaterial({ roughness: 0.8, metalness: 0, envMapIntensity: 0.45,
+    ...(opts.map?.userData.relief ? { bumpMap: opts.map.userData.relief, bumpScale: opts.map.userData.reliefScale || 0.006 } : {}), ...opts });
   const o = { ...opts };
   // metal sem reflexo de ambiente fica escuro no Lambert: clareia um pouco
   if (o.metalness > 0.5 && !o.map) o.color = new THREE.Color(o.color ?? '#ffffff').multiplyScalar(1.15);
@@ -114,8 +121,33 @@ export function std(opts = {}) {
   return new THREE.MeshLambertMaterial(o);
 }
 export const IS_MOBILE = MOBILE;
+// Distância mínima entre dois movimentos num frame: não perde golpes rápidos.
+export function sweptDistanceSq(a0, a1, b0, b1) {
+  const x = a0.x - b0.x, y = a0.y - b0.y, z = a0.z - b0.z;
+  const vx = a1.x - b1.x - x, vy = a1.y - b1.y - y, vz = a1.z - b1.z - z;
+  const length = vx * vx + vy * vy + vz * vz;
+  const t = length > 1e-12 ? Math.max(0, Math.min(1, -(x * vx + y * vy + z * vz) / length)) : 0;
+  return (x + vx * t) ** 2 + (y + vy * t) ** 2 + (z + vz * t) ** 2;
+}
+
+// Finite segment against an AABB; handles stationary/axis-aligned movement.
+export function segmentIntersectsBox(start, end, box) {
+  let near = 0, far = 1;
+  for (const axis of ['x', 'y', 'z']) {
+    const direction = end[axis] - start[axis];
+    if (Math.abs(direction) < 1e-10) {
+      if (start[axis] < box.min[axis] || start[axis] > box.max[axis]) return false;
+      continue;
+    }
+    let a = (box.min[axis] - start[axis]) / direction, b = (box.max[axis] - start[axis]) / direction;
+    if (a > b) [a, b] = [b, a];
+    near = Math.max(near, a); far = Math.min(far, b);
+    if (near > far) return false;
+  }
+  return true;
+}
 // Vidro/verniz no computador; no celular, o mesmo material leve do std()
-export function phys(opts = {}) { return MOBILE ? std(opts) : new THREE.MeshPhysicalMaterial(opts); }
+export function phys(opts = {}) { return MOBILE ? std(opts) : new THREE.MeshPhysicalMaterial({ envMapIntensity: 0.45, ...opts }); }
 
 export function shake(obj, amount, t) {
   obj.position.x += (Math.sin(t * 91) * 0.5 + Math.sin(t * 57) * 0.5) * amount;

@@ -61,7 +61,7 @@ export class Passthrough {
   update(dt) {
     const app = this.app;
     if (!this.mesh) return;
-    const overlayOpen = app.menu.open || app.keyboard.group.visible || app.wm.wins.some((w) => !w.minimized);
+    const overlayOpen = app.menu.open || !!app.screenDialog?.open || app.keyboard.group.visible || app.wm.wins.some((w) => !w.minimized);
     const want = !!this.on && !app.renderer.xr.isPresenting && (app.gameId === 'lobby' || overlayOpen);
     this.active = want;
     this.k += ((want ? 1 : 0) - this.k) * Math.min(1, dt * 8);

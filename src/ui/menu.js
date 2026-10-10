@@ -76,15 +76,17 @@ export class ArcMenu {
 
     // ---- barra universal ----
     const bar = new THREE.Group(); this.bar = bar; this.group.add(bar);
-    const pill = makeLabel('', { w: 0.68, h: 0.085, bg: 'rgba(24,25,28,0.92)' });
+    const pill = makeLabel('', { w: 0.83, h: 0.085, bg: 'rgba(24,25,28,0.92)' });
     bar.add(pill);
     this.clock = makeLabel('', { w: 0.1, h: 0.05, bg: 'rgba(0,0,0,0)', size: 0.5 });
-    this.clock.position.set(-0.275, 0, 0.002); bar.add(this.clock);
+    this.clock.position.set(-0.35, 0, 0.002); bar.add(this.clock);
     this.tip = makeLabel('', { w: 0.18, h: 0.042, bg: 'rgba(242,243,245,0.96)', fg: T.textOnLight, size: 0.48 });
     this.tip.visible = false; bar.add(this.tip);
     const items = [
       { icon: 'grid', tip: 'Biblioteca', fn: () => { lib.visible = !lib.visible; } },
       { icon: 'play', tip: 'YouTube', fn: () => app.openYouTube() },
+      { icon: 'grid', tip: 'Jogos externos', fn: () => app.openExternalApps() },
+      { icon: 'eye', tip: 'Security', fn: () => app.openSecurity() },
       { icon: 'keyboard', tip: 'Teclado', fn: () => app.keyboard.show('', null) },
       { icon: 'eye', tip: 'Mundo real (câmera)', fn: () => { if (!app.passthrough.available) { this.tip.userData.set('Só no modo óculos'); return; } app.passthrough.toggle(); } },
       { icon: 'recenter', tip: 'Recentralizar', fn: () => app.recenter() },
@@ -96,7 +98,7 @@ export class ArcMenu {
         w: 0.06, h: 0.06, icon: it.icon, variant: 'ghost', round: true, onClick: it.fn,
         onHover: (on) => { this.tip.visible = on; if (on) { this.tip.userData.set(it.tip); this.tip.position.set(b.position.x, 0.075, 0.004); } },
       });
-      b.position.set(-0.18 + i * 0.072, 0, 0.004);
+      b.position.set(-0.255 + i * 0.072, 0, 0.004);
       bar.add(b);
     });
     bar.position.set(0, -0.3, -0.98);

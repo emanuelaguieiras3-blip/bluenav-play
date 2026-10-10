@@ -1,0 +1,12 @@
+{
+  "name": "bluenav-play",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.0",
+    "three": "0.160.0"
+  }
+}

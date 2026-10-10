@@ -1,5 +1,5 @@
 // ⚔️ ARENA DE BATALHA — Ferro e Pedra
-import { Particles, glowTexture, std, hands2 } from './common.js';
+import { Particles, glowTexture, std, hands2, segmentIntersectsBox } from './common.js';
 
 export default {
   id: 'arena',
@@ -9,7 +9,9 @@ export default {
     audio.setEcho(0.35);
     ctx.teleport({ enabled: true, walk: true, check: (p) => Math.hypot(p.x, p.z) < 6.5 });
 
-    const floor = new THREE.Mesh(new THREE.CircleGeometry(8, 48).rotateX(-Math.PI / 2), std({ map: tex.get('stoneTiles'), roughness: 0.95 }));
+    // The enclosing wall masks the corners. Planar UVs avoid the circular
+    // floor's degenerate derivatives with bump mapping on some renderers.
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(16, 16).rotateX(-Math.PI / 2), std({ map: tex.get('stoneTiles'), roughness: 0.95 }));
     root.add(floor);
     const wall = new THREE.Mesh(new THREE.CylinderGeometry(8, 8, 7, 48, 1, true).translate(0, 3.5, 0), std({ map: tex.get('roughStone'), side: THREE.BackSide, roughness: 1 }));
     root.add(wall);
@@ -66,6 +68,7 @@ export default {
     let hpYou = 10, hpFoe = 10, phase = 'idle', phaseT = 2, tremble = 0, hitCd = 0, guardSide = 1, stepT = 0, wins = 0;
     const tip = new THREE.Vector3(), prevTip = new THREE.Vector3(), tmp = new THREE.Vector3();
     const foeBox = new THREE.Box3(), shieldBox = new THREE.Box3();
+    let swordReady = false, swordOwner = null, feedback = '', feedbackTime = 0;
 
     const impact = (p, big) => {
       for (let k = 0; k < (big ? 26 : 12); k++) sparks.spawn(p, new THREE.Vector3((Math.random() - 0.5) * 3, Math.random() * 2.5, (Math.random() - 0.5) * 3), { life: 0.35, color: [1, 0.75, 0.35, 1], gravity: 6 });
@@ -90,9 +93,13 @@ export default {
         shield.position.copy(shieldPos); shield.lookAt(eye.x, shieldPos.y, eye.z);
 
         prevTip.copy(tip);
+        sword.updateWorldMatrix(true, false);
         tip.set(0, 0.85, 0).applyMatrix4(sword.matrixWorld);
-        sword.updateMatrixWorld();
+        const owner = swordP?.id || input.source;
+        if (!swordReady || swordOwner !== owner || tip.distanceTo(prevTip) > 0.6) prevTip.copy(tip);
+        swordReady = true; swordOwner = owner;
         const tipSpeed = tip.distanceTo(prevTip) / Math.max(dt, 1e-3);
+        feedbackTime = Math.max(0, feedbackTime - dt);
 
         // oponente encara o jogador e se aproxima
         const toYou = tmp.copy(eye).sub(foe.position).setY(0);
@@ -122,12 +129,14 @@ export default {
         foe.updateMatrixWorld(true);
         shieldBox.setFromObject(foeShield).expandByScalar(0.05);
         foeBox.setFromObject(torso).union(new THREE.Box3().setFromObject(head));
-        const swinging = tipSpeed > 1.6 || swinging_input;
+        const swinging = !swordP?.uiBusy && !swordP?.stale && (tipSpeed > 1.6 || swinging_input);
         if (hitCd < 0 && swinging) {
-          if (shieldBox.containsPoint(tip) || shieldBox.containsPoint(sword.position.clone().lerp(tip, 0.6))) {
+          if (segmentIntersectsBox(prevTip, tip, shieldBox) || shieldBox.containsPoint(sword.position.clone().lerp(tip, 0.6))) {
             audio.metal(); impact(tip, true); tremble = 0.4; hitCd = 0.35;
-          } else if (foeBox.containsPoint(tip) || foeBox.containsPoint(sword.position.clone().lerp(tip, 0.6)) || (swinging_input && input.source !== 'hand' && dist < 2.0)) {
+            feedback = 'Escudo bloqueou! Ataque pelo outro lado.'; feedbackTime = 0.8;
+          } else if (segmentIntersectsBox(prevTip, tip, foeBox) || foeBox.containsPoint(sword.position.clone().lerp(tip, 0.6)) || (swinging_input && input.source !== 'hand' && dist < 2.0)) {
             hpFoe--; hitCd = 0.45; audio.noise({ dur: 0.12, freq: 700, vol: 0.3, echo: true }); audio.thud(); impact(tip, false);
+            feedback = 'Golpe acertou!'; feedbackTime = 0.8;
             foe.position.addScaledVector(tmp.copy(foe.position).sub(eye).setY(0).normalize(), 0.35);
           }
         }
@@ -135,7 +144,7 @@ export default {
         if (hpYou <= 0) { hpYou = 10; hpFoe = 10; rig.position.set(0, 0, 0); foe.position.set(0, 0, -3); }
         sparks.update(dt); sand.update(dt);
         const bar = (n) => '█'.repeat(Math.max(0, n)) + '░'.repeat(Math.max(0, 10 - n));
-        ctx.hud(`Você ${bar(hpYou)}  Oponente ${bar(hpFoe)}`, `Vitórias ${wins} · bloqueie quando a espada dele brilhar`);
+        ctx.hud(`Você ${bar(hpYou)}  Oponente ${bar(hpFoe)}`, feedbackTime > 0 ? feedback : `Vitórias ${wins} · bloqueie quando a espada dele brilhar`);
       },
     };
   },

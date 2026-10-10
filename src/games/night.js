@@ -5,7 +5,7 @@ export default {
   id: 'night',
   create(ctx) {
     const { THREE, root, tex, audio, input, env, scene } = ctx;
-    env.set({ top: '#05070f', horizon: '#0b0f1a', bottom: '#020203', fog: { color: '#05070d', density: 0.09 }, hemi: ['#4a5878', '#050505', 0.12], sun: ['#9fb4e0', 0.12], sunPos: [-10, 20, -30] });
+    env.set({ top: '#05070f', horizon: '#0b0f1a', bottom: '#020203', fog: { color: '#05070d', density: 0.045 }, hemi: ['#9faec5', '#293342', 0.65], sun: ['#b4c7ef', 0.5], sunPos: [-10, 20, -30] });
     const R = 26;
     ctx.teleport({ enabled: true, walk: true, check: (p) => Math.hypot(p.x, p.z) < R - 1 && !trunks.some((t) => Math.hypot(t.x - p.x, t.z - p.z) < 0.8) });
 
@@ -50,6 +50,7 @@ export default {
     const flashTarget = new THREE.Object3D(); root.add(flash, flashTarget); flash.target = flashTarget;
     const body = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.028, 0.16, 12).rotateX(Math.PI / 2), std({ color: '#2a2d33', metalness: 0.6, roughness: 0.4 }));
     root.add(body);
+    body.position.copy(ctx.eye()).add(new THREE.Vector3(0.15, -0.25, -0.3));
 
     // sinalizadores para encontrar
     const flares = [];

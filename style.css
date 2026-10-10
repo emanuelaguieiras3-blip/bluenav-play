@@ -8,6 +8,24 @@
   --accent: #2d88ff;
 }
 * { box-sizing: border-box; }
+.screen-panel {
+  width: min(560px, calc(100vw - 24px)); max-height: calc(100dvh - 24px);
+  border: 1px solid var(--line); border-radius: 24px; padding: 24px;
+  background: var(--card); color: var(--fg); overflow-y: auto; touch-action: pan-y;
+  line-height: 1.5; user-select: text;
+}
+.screen-panel::backdrop { background: #000b; }
+.screen-panel h2 { margin: 0 0 12px; }
+.screen-panel h3 { margin: 0; }
+.panel-hint, .app-card p { color: var(--muted); font-size: 14px; }
+.app-card { padding: 18px 0; border-bottom: 1px solid var(--line); }
+.app-card a { color: #8fc4ff; display: inline-block; margin: 0 18px 12px 0; }
+.app-card button { width: 100%; font-size: 14px; }
+.screen-panel > button { margin-top: 20px; width: 100%; }
+.screen-panel textarea { display: block; width: 100%; min-height: 100px; margin: 12px 0; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--fg); font: inherit; }
+.security-answer { white-space: pre-wrap; }
+button:disabled { opacity: .5; cursor: wait; }
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
 html, body {
   margin: 0; height: 100%; overflow: hidden;
   background: var(--bg); color: var(--fg);
@@ -55,11 +73,16 @@ button:active { transform: scale(0.98); }
 
 #video-layer { position: fixed; inset: 0; z-index: 6; background: rgba(0, 0, 0, 0.92); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; }
 #video-layer[hidden] { display: none; }
-#video-slots { display: flex; width: 100%; height: calc(100% - 76px); align-items: center; justify-content: center; }
+#video-slots { display: flex; width: 100%; flex: 1; min-height: 0; align-items: center; justify-content: center; }
 #video-slots.flat > div { width: min(92vw, calc((100vh - 96px) * 16 / 9)); aspect-ratio: 16 / 9; border-radius: 20px; overflow: hidden; }
 #video-slots.stereo > div { width: 50%; height: 100%; }
 #video-slots iframe { width: 100%; height: 100%; border: 0; }
 #video-close { background: var(--fg); color: #111214; padding: 12px 22px; }
+#video-controls { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; padding: 0 12px; }
+#video-controls button { padding: 10px 16px; font-size: 14px; }
+#video-status { margin: 0 16px 12px; min-height: 1.5em; font-size: 13px; text-align: center; color: #d4deee; }
+#video-slots.stereo > div { display: flex; align-items: center; padding: 4% 3%; }
+#video-slots.stereo iframe { height: auto; aspect-ratio: 16 / 9; border-radius: 14px; }
 /* passthrough ativo: o vídeo flutua sobre o mundo real (a câmera aparece em volta) */
 #video-layer.pt { background: transparent; }
 #video-layer.pt #video-slots.stereo > div { padding: 9% 7%; }

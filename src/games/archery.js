@@ -50,6 +50,10 @@ export default {
       return a;
     };
     const nocked = makeArrow(); bowGroup.add(nocked);
+    // Prévia balística leve: mostra a queda real da flecha enquanto puxa.
+    const trajectory = new THREE.InstancedMesh(new THREE.SphereGeometry(0.018, 6, 4), new THREE.MeshBasicMaterial({ color: '#8fd8ff', transparent: true, opacity: 0.7 }), 18);
+    trajectory.frustumCulled = false; trajectory.visible = false; root.add(trajectory);
+    const trajectoryMatrix = new THREE.Matrix4(), trajectoryPoint = new THREE.Vector3();
     const flying = [];
     const leaves = new Particles(root, { max: 80, size: 0.08, texture: tex.get('leaf') });
 
@@ -90,6 +94,17 @@ export default {
         }
         bowGroup.position.copy(bowPos);
         bowGroup.quaternion.setFromRotationMatrix(new THREE.Matrix4().lookAt(new THREE.Vector3(), dir, new THREE.Vector3(0, 1, 0)));
+        trajectory.visible = wantDraw && draw > 0.15;
+        if (trajectory.visible) {
+          for (let i = 0; i < 18; i++) {
+            const time = (i + 1) * 0.045;
+            trajectoryPoint.copy(bowPos).addScaledVector(dir, (18 + draw * 40) * time);
+            trajectoryPoint.y -= 0.5 * 4.9 * time * time;
+            trajectory.setMatrixAt(i, trajectoryMatrix.makeTranslation(trajectoryPoint.x, trajectoryPoint.y, trajectoryPoint.z));
+          }
+          trajectory.instanceMatrix.needsUpdate = true;
+          trajectory.material.color.set(draw > 0.75 ? '#66ffb3' : '#8fd8ff');
+        }
 
         // quanto mais puxa, mais resiste (mão treme)
         if (wantDraw) {

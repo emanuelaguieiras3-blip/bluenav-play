@@ -1,7 +1,7 @@
 // Botões no estilo Horizon OS: placas planas arredondadas, hover levanta e clareia,
 // item ativo vira pílula branca. O rótulo e o ícone são desenhados no canvas.
 import * as THREE from 'three';
-import { textTexture, fitText } from '../core/textures.js';
+import { textTexture, textCanvas, fitText } from '../core/textures.js';
 import { T, drawIcon } from './theme.js';
 
 const VARIANTS = {
@@ -78,8 +78,8 @@ export function makeLabel(text, { w = 0.6, h = 0.12, bg = 'rgba(24,25,28,0.86)',
   m.userData.set = (t, s) => {
     if (m.userData.last === t + '|' + s) return;
     m.userData.last = t + '|' + s;
-    mat.map.dispose();
-    mat.map = textTexture(t, opts(t, s));
+    textCanvas(t, { ...opts(t, s), canvas: mat.map.image });
+    mat.map.needsUpdate = true;
   };
   return m;
 }

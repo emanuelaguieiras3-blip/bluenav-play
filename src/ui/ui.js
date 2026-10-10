@@ -5,6 +5,7 @@
 // Cursor em anel que se fecha conforme a força da pinça; raio claro que some em direção ao alvo.
 import * as THREE from 'three';
 import { CONFIG } from '../../config.js';
+import { FingerContact } from '../hands/fingerContact.js';
 
 const SWIPE_ANGLE = 0.11; // ~6° de movimento antes de virar arrasto
 
@@ -34,7 +35,7 @@ export class UI {
     for (const s of this.states.values()) {
       if (s.hoverMesh && fn(s.hoverMesh)) this._clearHover(s);
       if (s.press && fn(s.press.mesh)) s.press = null;
-      if (s.dragMesh && fn(s.dragMesh)) { s.drag = null; s.dragMesh = null; }
+      if (s.dragMesh && fn(s.dragMesh)) { s.drag.end?.(s.lastP); s.drag = null; s.dragMesh = null; }
     }
   }
 
@@ -55,9 +56,9 @@ export class UI {
       id: p.id, cursor: g, line,
       ringC: mk(new THREE.RingGeometry(0.0115, 0.0145, 40), 0xffffff, 0.9),
       fill: mk(new THREE.CircleGeometry(0.0115, 32), 0xffffff, 0.85),
-      prog: mk(new THREE.RingGeometry(0.016, 0.0185, 40, 1, Math.PI / 2, 0.0001), 0x2d88ff, 1),
+      prog: mk(new THREE.RingGeometry(0.016, 0.0185, 40, 1, Math.PI / 2, -Math.PI * 2), 0x2d88ff, 1),
       hoverKey: null, hoverSub: null, hoverMesh: null, dwellT: 0, fired: false,
-      press: null, drag: null, dragMesh: null, pokeArmed: true, hitPoint: new THREE.Vector3(), pq: -1, seen: true,
+      press: null, drag: null, dragMesh: null, contact: new FingerContact(), prevTip: null, hitPoint: new THREE.Vector3(), pq: -1, seen: true,
     };
     app.scene.add(g, line);
     this.states.set(p.id, s);
@@ -106,7 +107,11 @@ export class UI {
       if (s.drag) { s.drag.end?.(s.lastP); s.drag = null; s.dragMesh = null; }
       this._clearHover(s); s.press = null;
       s.cursor.visible = false; s.line.visible = false;
-      if (!input._ptrs?.has(id)) { s.cursor.removeFromParent(); s.line.removeFromParent(); this.states.delete(id); }
+      if (!input._ptrs?.has(id)) {
+        s.cursor.traverse((o) => { o.geometry?.dispose(); o.material?.dispose(); });
+        s.line.geometry.dispose(); s.line.material.dispose();
+        s.cursor.removeFromParent(); s.line.removeFromParent(); this.states.delete(id);
+      }
     }
     this.hovering = anyHover;
     this.drag = anyDrag;
@@ -123,6 +128,20 @@ export class UI {
   _updatePointer(s, p, dt, vis) {
     const app = this.app;
     s.lastP = p;
+    if (p.stale && !p.system) {
+      // Tracking dropout is not a release. Keep the grab, suppress new actions.
+      s.press = null; s.prevTip = null;
+      this._clearHover(s); s.cursor.visible = false; s.line.visible = false;
+      return;
+    }
+    if (p.system) {
+      if (s.drag) s.drag.end?.(p);
+      s.drag = null; s.dragMesh = null; s.press = null;
+      this._clearHover(s); s.tap = null; s.tapArmed = undefined;
+      s.cursor.visible = false; s.line.visible = false;
+      s.prevTip = null; s.contact.reset();
+      return;
+    }
     // arrasto em andamento (mover janela, pegar objeto) — cada mão o seu
     if (s.drag) {
       if (p.pinch) s.drag.move?.(p, dt);
@@ -130,23 +149,34 @@ export class UI {
     }
 
     // toque direto com o dedo (perto do painel o Quest troca o raio pelo dedo)
-    let hit = null, poking = false;
+    let hit = null, poking = false, pokeClick = false;
     if (p.pokeTip && vis.length) {
       const eye = app.camera.getWorldPosition(new THREE.Vector3());
       const dir = p.pokeTip.clone().sub(eye).normalize();
       this.raycaster.set(p.pokeTip.clone().addScaledVector(dir, -0.06), dir);
       this.raycaster.far = 0.16;
-      const ph = this.raycaster.intersectObjects(vis, false)[0];
+      let ph = this.raycaster.intersectObjects(vis, false)[0];
+      // Sweep the fingertip: a quick push must not pass through a thin button.
+      if (s.prevTip) {
+        const movement = p.pokeTip.clone().sub(s.prevTip), distance = movement.length();
+        if (distance > 0.001 && distance < 0.2) {
+          this.raycaster.set(s.prevTip, movement.divideScalar(distance));
+          this.raycaster.far = distance + 0.004;
+          const swept = this.raycaster.intersectObjects(vis, false)[0];
+          if (swept) ph = swept;
+        }
+      }
+      if (!s.prevTip) s.prevTip = p.pokeTip.clone(); else s.prevTip.copy(p.pokeTip);
       if (ph) {
         hit = ph; poking = true;
-        const depth = 0.06 - ph.distance; // >0: a ponta passou da superfície
-        if (depth > -0.004 && s.pokeArmed) {
-          s.pokeArmed = false;
-          const sub = this._subFor(ph);
-          if (sub?.onClick) this._fire(s, sub, ph.object);
-        } else if (depth < -0.03) s.pokeArmed = true;
-      } else s.pokeArmed = true;
-    }
+        const normal = ph.face.normal.clone().transformDirection(ph.object.matrixWorld);
+        if (normal.dot(eye.clone().sub(ph.point)) < 0) normal.negate();
+        const depth = -p.pokeTip.clone().sub(ph.point).dot(normal);
+        const contactSub = this._subFor(ph);
+        pokeClick = s.contact.update(contactSub ? ph.object.uuid + '|' + contactSub.key : null, depth);
+        if (pokeClick) s.pokePoint = ph.point.clone();
+      } else if (!s.pokePoint || p.pokeTip.distanceTo(s.pokePoint) > 0.045) s.contact.reset();
+    } else s.prevTip = null;
 
     if (!hit && !p.system) {
       this.raycaster.ray.copy(p.ray);
@@ -163,6 +193,7 @@ export class UI {
         if (sub.onClick) app.audio.hover();
       }
     } else if (sub) s.hoverSub = sub;
+    if (pokeClick && sub?.onClick && !s.drag) { s.press = null; this._fire(s, sub, hit.object); }
 
     const gaze = p.source === 'gaze';
     if (!poking && !s.drag) {
@@ -185,17 +216,18 @@ export class UI {
         } else if (!p.pinch) s.press = null;
       }
       // dedo apontando para o botão: "empurrar" o dedo para frente clica na hora
-      if (p.fingerAim && sub && sub.onClick) {
+      if (p.fingerAim && sub && sub.onClick && !s.press && !p.pinch) {
         const now = performance.now();
+        if (s.tapKey !== key) { s.tap = []; s.tapKey = key; }
         s.tap = (s.tap || []).filter((q) => now - q[0] < 180);
         s.tap.push([now, p.tipDepth]);
         const minD = Math.min(...s.tap.map((q) => q[1]));
         if (s.tapArmed !== false && p.tipDepth - minD > 0.025) { s.tapArmed = false; this._fire(s, sub, hit.object); }
         if (p.tipDepth < (s.tapRest ?? p.tipDepth) - 0.015 || s.tapArmed === undefined) s.tapArmed = true;
         s.tapRest = s.tapArmed ? p.tipDepth : Math.max(s.tapRest ?? 0, p.tipDepth);
-      } else { s.tap = null; s.tapArmed = undefined; s.tapRest = undefined; }
+      } else { s.tap = null; s.tapKey = null; s.tapArmed = undefined; s.tapRest = undefined; }
       // parar o olhar (papelão sem mãos) ou o dedo em cima do botão por 0,65s
-      if ((gaze || p.fingerAim) && sub && sub.onClick && !s.fired && !s.press) {
+      if (gaze && sub && sub.onClick && !s.fired && !s.press) {
         s.dwellT += dt;
         if (s.dwellT >= (sub.dwell ?? CONFIG.DWELL_TIME)) this._fire(s, sub, hit.object);
       }
@@ -203,17 +235,17 @@ export class UI {
 
     // ---- cursor ----
     const strength = p.pinchStrength || 0;
-    const progress = (gaze || p.fingerAim) && sub && sub.onClick && !s.fired ? Math.min(1, s.dwellT / (sub.dwell ?? CONFIG.DWELL_TIME)) : 0;
+    const progress = gaze && sub && sub.onClick && !s.fired ? Math.min(1, s.dwellT / (sub.dwell ?? CONFIG.DWELL_TIME)) : 0;
     let n = null;
     const gameHit = p.main ? app.pointerHit : null;
     if (hit) {
       s.hitPoint.copy(hit.point);
       n = hit.face ? hit.face.normal.clone().transformDirection(hit.object.matrixWorld) : p.ray.direction.clone().negate();
       if (n.dot(p.ray.direction) > 0) n.negate();
-    } else if (gameHit) s.hitPoint.copy(gameHit);
+    } else if (gameHit) p.ray.closestPointToPoint(gameHit, s.hitPoint);
     else s.hitPoint.copy(p.ray.origin).addScaledVector(p.ray.direction, 2.2);
     const dist = p.ray.origin.distanceTo(s.hitPoint);
-    s.cursor.visible = !p.system && (!!hit || !!gameHit || gaze);
+    s.cursor.visible = !p.system && (!!hit || !!gameHit || gaze || p.source === 'hand');
     s.cursor.position.copy(s.hitPoint);
     if (n) { s.cursor.position.addScaledVector(n, 0.003); s.cursor.lookAt(s.cursor.position.clone().add(n)); }
     else s.cursor.lookAt(p.ray.origin);
@@ -221,17 +253,18 @@ export class UI {
     s.cursor.scale.setScalar(base * (1 - strength * 0.25));
     s.fill.scale.setScalar(Math.max(0.001, strength));
     s.ringC.material.opacity = sub ? 1 : 0.55;
+    s.flash = Math.max(0, (s.flash || 0) - dt);
+    s.ringC.material.color.set(s.flash > 0 ? 0x66ffb3 : sub ? 0x87bdff : 0xffffff);
     const pq = Math.round(progress * 40);
     if (pq !== s.pq) {
       s.pq = pq;
-      s.prog.geometry.dispose();
-      s.prog.geometry = new THREE.RingGeometry(0.016, 0.0185, 40, 1, Math.PI / 2, -Math.max(0.0001, (pq / 40) * Math.PI * 2));
+      s.prog.geometry.setDrawRange(0, pq * 6);
     }
     s.prog.visible = progress > 0;
 
     // ---- raio ----
     const pos = s.line.geometry.attributes.position;
-    pos.setXYZ(0, p.origin.x, p.origin.y, p.origin.z);
+    pos.setXYZ(0, p.ray.origin.x, p.ray.origin.y, p.ray.origin.z);
     pos.setXYZ(1, s.hitPoint.x, s.hitPoint.y, s.hitPoint.z);
     pos.needsUpdate = true;
     const col = s.line.geometry.attributes.color;
@@ -249,6 +282,7 @@ export class UI {
 
   _fire(s, sub, mesh) {
     s.fired = true;
+    s.flash = 0.2;
     const u = mesh.userData.ui;
     const obj = sub.press || u.press;
     if (obj && !this.presses.some((q) => q.obj === obj)) this.presses.push({ obj, t: 0, z0: obj.position.z });

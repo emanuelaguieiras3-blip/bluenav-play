@@ -47,7 +47,10 @@ export class GeminiAssist {
     this.last = null;
     this.calls = 0;
     this.agree = 0;
+    this.controller = null;
   }
+
+  cancel() { this.controller?.abort(); }
 
   _endpoint(model) {
     if (CONFIG.GEMINI_PROXY_URL) return { url: CONFIG.GEMINI_PROXY_URL, headers: {} };
@@ -66,6 +69,9 @@ export class GeminiAssist {
     if (frames.length > 6) { const step = (frames.length - 1) / 5; frames = Array.from({ length: 6 }, (_, i) => frames[Math.round(i * step)]); }
     if (!CONFIG.GEMINI_API_KEY && !CONFIG.GEMINI_PROXY_URL) { this.status = 'sem chave'; return; }
     this.busy = true;
+    const controller = new AbortController();
+    this.controller = controller;
+    const timeout = setTimeout(() => controller.abort(), 8000);
     const payload = {
       intervaloMs: Math.round((frames[frames.length - 1].t - frames[0].t)),
       unidade: 'metros, espaço da câmera (x direita, y cima, z para o usuário)',
@@ -81,7 +87,7 @@ export class GeminiAssist {
     if (!this.noThinkingCfg) body.generationConfig.thinkingConfig = { thinkingBudget: 0 };
     this.status = `enviando (${model})…`;
     const t0 = performance.now();
-    fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) })
+    fetch(url, { method: 'POST', signal: controller.signal, headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) })
       .then(async (r) => {
         if (r.status === 404 && this.modelIdx < CONFIG.GEMINI_MODELS.length - 1) { this.modelIdx++; this.retrySoon = true; throw new Error('modelo indisponível, tentando outro'); }
         if (r.status === 400 && !this.noThinkingCfg) { this.noThinkingCfg = true; this.retrySoon = true; throw new Error('ajustando requisição'); }
@@ -90,6 +96,11 @@ export class GeminiAssist {
         const j = await r.json();
         const text = j?.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || '';
         const out = JSON.parse(text.replace(/^```json|```$/g, '').trim());
+        if (!Array.isArray(out.pontosCorrigidos) || out.pontosCorrigidos.length !== 21 ||
+            !out.pontosCorrigidos.every((p) => Array.isArray(p) && p.length === 3 && p.every(Number.isFinite)) ||
+            !Number.isFinite(out.confianca) || out.confianca < 0 || out.confianca > 1 ||
+            !['pinça', 'aberta', 'apontando', 'indefinida'].includes(out.gesto)) throw new Error('resposta inválida');
+        if (!this.enabled || controller.signal.aborted) return;
         this.calls++;
         if (out.gesto === localGesture) this.agree++;
         this.last = out;
@@ -97,7 +108,10 @@ export class GeminiAssist {
         this.status = `ok ${Math.round(performance.now() - t0)}ms · gesto ${out.gesto} · conf ${out.confianca} · acordo ${this.agree}/${this.calls}`;
         onResult(out);
       })
-      .catch((e) => { this.status = 'erro: ' + e.message; })
-      .finally(() => { this.busy = false; this.nextAt = performance.now() + (this.retrySoon ? 500 : this.backoff); this.retrySoon = false; });
+      .catch((e) => { this.status = controller.signal.aborted ? 'tempo esgotado/cancelado' : 'erro: ' + e.message; })
+      .finally(() => {
+        clearTimeout(timeout); this.controller = null; this.busy = false;
+        this.nextAt = performance.now() + (this.retrySoon ? 500 : this.backoff); this.retrySoon = false;
+      });
   }
 }

@@ -15,6 +15,7 @@ const CHAINS = [[0, 1, 2, 3, 4], [0, 5, 6, 7, 8], [0, 9, 10, 11, 12], [0, 13, 14
 const PALM = new Set([0, 1, 5, 9, 13, 17]);
 const NEIGHBORS = Array.from({ length: 21 }, () => []);
 for (const [a, b] of BONES) { NEIGHBORS[a].push(b); NEIGHBORS[b].push(a); }
+const BONE_INDEX = new Map(BONES.map(([a, b], k) => [a + '-' + b, k]));
 
 // --- vetores em arrays [x,y,z] ---
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -53,18 +54,23 @@ export class HandCorrector {
   // raw: 21 pontos [x,y,z] em metros (espaço da câmera); dt em s; score: confiança do MediaPipe
   // chir: +1 mão direita, -1 esquerda (no espaço 3D da câmera); 0 = desconhecido
   process(raw, dt, score = 1, chir = 0) {
-    dt = Math.min(Math.max(dt, 1 / 120), 0.2);
+    if (!Array.isArray(raw) || raw.length !== 21 || !raw.every((p) => Array.isArray(p) && p.length === 3 && p.every(Number.isFinite)) || !Number.isFinite(score) || dist(raw[0], raw[9]) < 0.02) {
+      return { pontosCorrigidos: this.prev, gesto: 'indefinida', confianca: 0 };
+    }
+    dt = Number.isFinite(dt) ? Math.min(Math.max(dt, 1 / 120), 0.2) : 1 / 60;
     this.frames++;
     if (!this.prev) {
+      if (BONES.some(([a, b]) => dist(raw[a], raw[b]) < 0.003))
+        return { pontosCorrigidos: null, gesto: 'indefinida', confianca: 0 };
       this.prev = raw.map((p) => p.slice());
       this.prevRaw = raw;
-      this.boneLen = BONES.map(([a, b]) => dist(raw[a], raw[b]));
+      this.boneLen = BONES.map(([a, b]) => Math.max(0.004, dist(raw[a], raw[b])));
       return { pontosCorrigidos: raw, gesto: 'indefinida', confianca: 0.2 * score };
     }
     // Sem certeza: devolve os pontos originais com confiança baixa
     if (score < 0.5) {
       this.prevRaw = raw;
-      return { pontosCorrigidos: raw, gesto: this.gesture, confianca: 0.15 * score };
+      return { pontosCorrigidos: this.prev, gesto: this.gesture, confianca: 0.15 * score };
     }
 
     const prev = this.prev;
@@ -116,15 +122,40 @@ export class HandCorrector {
 
     // 4) Validação anatômica: comprimentos dos ossos coerentes
     BONES.forEach(([a, b], k) => {
-      if (outliers === 0) this.boneLen[k] += (dist(raw[a], raw[b]) - this.boneLen[k]) * 0.04;
+      const measured = dist(raw[a], raw[b]), reference = this.boneLen[k];
+      if (score >= 0.7 && outliers === 0 && measured > reference * 0.7 && measured < reference * 1.3) {
+        this.boneLen[k] += (measured - reference) * (1 - Math.exp(-dt * 0.6));
+      }
     });
-    const boneIndex = new Map(BONES.map(([a, b], k) => [a + '-' + b, k]));
+    // Uma oclusão também pode juntar as bases de dois dedos. Mantém separação
+    // da palma dentro da anatomia calibrada antes de reconstruir os dedos.
+    for (let pass = 0; pass < 3; pass++) {
+      for (let k = 0; k < BONES.length; k++) {
+        const [a, b] = BONES[k];
+        if (!PALM.has(a) || !PALM.has(b)) continue;
+        const reference = this.boneLen[k];
+        let segment = sub(out[b], out[a]), measured = len(segment);
+        const wanted = Math.max(reference * 0.8, Math.min(reference * 1.2, measured));
+        if (Math.abs(wanted - measured) < 1e-6) continue;
+        if (measured < 0.001) segment = sub(prev[b], prev[a]);
+        const delta = mul(norm(segment), wanted - measured);
+        const moveBase = (joint, movement) => {
+          const chain = CHAINS.find((ch) => ch[1] === joint);
+          for (const index of chain?.slice(1) || [joint]) out[index] = add(out[index], movement);
+        };
+        if (a === 0) moveBase(b, delta);
+        else { moveBase(a, mul(delta, -0.5)); moveBase(b, mul(delta, 0.5)); }
+      }
+    }
     for (const ch of CHAINS) {
       for (let j = 1; j < ch.length; j++) {
         const p = ch[j - 1], c = ch[j];
         if (PALM.has(c) && c !== 1) continue; // base da palma fica como está
-        const L = this.boneLen[boneIndex.get(p + '-' + c)];
-        const dir = norm(sub(out[c], out[p]));
+        const L = this.boneLen[BONE_INDEX.get(p + '-' + c)];
+        let segment = sub(out[c], out[p]);
+        if (len(segment) < L * 0.35 || dist(raw[c], raw[p]) < L * 0.35) segment = sub(prev[c], prev[p]);
+        if (len(segment) < 0.001) segment = [0, 1, 0];
+        const dir = norm(segment);
         const fixed = add(out[p], mul(dir, L));
         const delta = sub(fixed, out[c]);
         for (let k = j; k < ch.length; k++) out[ch[k]] = add(out[ch[k]], delta);
@@ -214,13 +245,12 @@ export class HandCorrector {
 
   // Calibração vinda do Gemini (pontos corrigidos de uma janela de frames)
   applyReference(points, confianca) {
-    if (!this.boneLen || !Array.isArray(points) || points.length !== 21 || confianca < 0.6) return false;
+    if (!this.boneLen || !Array.isArray(points) || points.length !== 21 || !Number.isFinite(confianca) || confianca < 0.6 || confianca > 1) return false;
     const ok = points.every((p) => Array.isArray(p) && p.length === 3 && p.every(Number.isFinite));
     if (!ok) return false;
-    BONES.forEach(([a, b], k) => {
-      const L = dist(points[a], points[b]);
-      if (L > 0.003 && L < 0.12) this.boneLen[k] = this.boneLen[k] * 0.7 + L * 0.3;
-    });
+    const lengths = BONES.map(([a, b]) => dist(points[a], points[b]));
+    if (lengths.some((L, k) => L < 0.004 || L > 0.15 || L < this.boneLen[k] * 0.7 || L > this.boneLen[k] * 1.3)) return false;
+    lengths.forEach((L, k) => { this.boneLen[k] = this.boneLen[k] * 0.95 + L * 0.05; });
     return true;
   }
 }

@@ -69,6 +69,7 @@ export class HandTracker {
 
   _onResult(m) {
     this.busy = false;
+    if (!this.running || performance.now() - m.t > 200) return;
     this.detectMs = this.detectMs * 0.85 + m.ms * 0.15;
     // se o celular não dá conta de 30 Hz, espaça um pouco (a mão é suavizada entre detecções)
     // acompanha até 60 Hz; se o celular não der conta, espaça só o necessário
@@ -82,23 +83,30 @@ export class HandTracker {
   stop() {
     this.running = false;
     this.worker?.terminate();
-    if (this.video && this.video.srcObject) this.video.srcObject.getTracks().forEach((t) => t.stop());
+    this.worker = null; this.busy = false; this.hands = []; this.history = []; this.slots = null;
+    this.landmarker?.close(); this.landmarker = null;
+    this.gemini.cancel();
+    // A câmera pertence ao feed compartilhado com o passthrough.
   }
 
   update(now) {
+    if (this.slots) this.hands = this.hands.filter((h) => now - this.slots[h.id].lastSeen < 150)
+      .map((h) => now - this.slots[h.id].lastSeen > 80 && !h.stale ? { ...h, stale: true } : h);
     if (!this.running || this.video.readyState < 2) return;
     if (this.video.currentTime === this.lastVideoTime) return;
     if (now - this._lastDetect < this.minInterval) return;
     if (this.mode === 'worker') {
-      if (this.busy && now - this._lastDetect > 1500) this.busy = false; // proteção se um quadro se perder
       if (this.busy) return; // um quadro por vez: nunca acumula fila
       this.busy = true;
       this.lastVideoTime = this.video.currentTime;
       this._lastDetect = now;
       const vw = this.video.videoWidth, vh = this.video.videoHeight;
       const opts = vw > 640 ? { resizeWidth: 480, resizeHeight: Math.round(480 * vh / vw), resizeQuality: 'low' } : undefined;
+      const worker = this.worker;
       (opts ? createImageBitmap(this.video, opts).catch(() => createImageBitmap(this.video)) : createImageBitmap(this.video)).then((bmp) => {
-        this.worker.postMessage({ type: 'frame', bitmap: bmp, t: now }, [bmp]);
+        if (!this.running || this.worker !== worker) { bmp.close(); return; }
+        try { worker.postMessage({ type: 'frame', bitmap: bmp, t: now }, [bmp]); }
+        catch (e) { bmp.close(); throw e; }
       }).catch(() => { this.busy = false; });
       return;
     }
@@ -108,7 +116,7 @@ export class HandTracker {
     let res;
     try { res = this.landmarker.detectForVideo(this.video, now); } catch { return; }
     this.detectMs = this.detectMs * 0.9 + (performance.now() - t0) * 0.1;
-    this.minInterval = this.detectMs > 28 ? 50 : this.detectMs > 18 ? 33 : 0;
+    this.minInterval = Math.max(33, this.detectMs * 2);
     this._lastDetect = now;
     const dt = this.lastT ? (now - this.lastT) / 1000 : 1 / 30;
     this.lastT = now;
@@ -126,7 +134,9 @@ export class HandTracker {
     const n = res.landmarks ? res.landmarks.length : 0;
     const dets = [];
     for (let h = 0; h < n; h++) {
-      const lm = res.landmarks[h], wl = res.worldLandmarks[h];
+      const lm = res.landmarks[h], wl = res.worldLandmarks?.[h];
+      if (!lm || !wl || lm.length !== 21 || wl.length !== 21 ||
+          ![...lm, ...wl].every((p) => [p.x, p.y, p.z].every(Number.isFinite))) continue;
       const cat = res.handednesses?.[h]?.[0] || res.handedness?.[h]?.[0] || { categoryName: 'Right', score: 0.8 };
       // Profundidade: compara o tamanho real (metros) com o tamanho na imagem
       let wSum = 0, iSum = 0;
@@ -161,7 +171,7 @@ export class HandTracker {
       if (det.slot) continue;
       const sl = slots.filter((x) => !used.has(x)).sort((x, y) => x.lastSeen - y.lastSeen)[0];
       if (!sl) continue;
-      sl.corrector.reset(); sl.d = 0; sl.vote = 0; sl.out = null;
+      sl.corrector.reset(); sl.d = 0; sl.vote = 0; sl.out = null; sl.generation = (sl.generation || 0) + 1;
       det.slot = sl; used.add(sl);
     }
 
@@ -183,6 +193,7 @@ export class HandTracker {
       sl.vote = sl.vote * 0.85 + (det.effRight ? 0.15 : -0.15);
       const chir = sl.vote >= 0 ? 1 : -1;
       const r = sl.corrector.process(pts, dt, det.score, chir);
+      if (!r.pontosCorrigidos || r.confianca === 0) continue;
       sl.lastSeen = now; sl.wrist = pts[0];
       const c = sl.corrector;
       sl.out = { id: sl.id, label: chir > 0 ? 'Right' : 'Left', pontos: r.pontosCorrigidos, gesto: r.gesto, confianca: r.confianca, pinchDist: c.pinchDist, pinchStrength: c.pinchStrength, palmFacing: c.palmFacing, raw: pts, stale: false };
@@ -203,11 +214,16 @@ export class HandTracker {
     // Janela de ~0,5s da mão principal para o Gemini (calibração em segundo plano)
     const main = out.find((o) => !o.stale);
     if (main) {
+      const slot = slots[main.id], generation = slot.generation;
+      const historyKey = main.id + ':' + generation;
+      if (this.historyKey !== historyKey) { this.history = []; this.historyKey = historyKey; }
       this.history.push({ t: now, pontos: main.raw });
       while (this.history.length && now - this.history[0].t > 500) this.history.shift();
       const corr = slots[main.id].corrector;
       this.gemini.maybeSend(performance.now(), this.history.slice(), main.gesto, (res2) => {
-        corr.applyReference(res2.pontosCorrigidos, res2.confianca);
+        if (this.running && slot.generation === generation && performance.now() - slot.lastSeen < 200) {
+          corr.applyReference(res2.pontosCorrigidos, res2.confianca);
+        }
       });
     }
   }

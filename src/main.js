@@ -11,6 +11,7 @@ async function go(mode) {
     $('start').classList.add('hidden');
     window.__app = app; // depuração
     await app.start(mode, { hands: $('chk-hands').checked, gemini: $('chk-gemini').checked, onStatus: status });
+    return app;
   } catch (e) {
     console.error(e);
     $('start').classList.remove('hidden');
@@ -21,6 +22,11 @@ async function go(mode) {
 $('btn-cardboard').addEventListener('click', () => go('cardboard'));
 $('btn-flat').addEventListener('click', () => go('flat'));
 $('btn-xr').addEventListener('click', () => go('xr'));
+$('btn-rhythm').addEventListener('click', async () => {
+  const running = await go('cardboard');
+  if (!running) return;
+  await running.loadGame('rhythm'); running.menu.toggle(false); running.game?.chooseMusic?.();
+});
 
 if (navigator.xr?.isSessionSupported) {
   navigator.xr.isSessionSupported('immersive-vr').then((ok) => { $('btn-xr').hidden = !ok; }).catch(() => {});

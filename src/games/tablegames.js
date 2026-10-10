@@ -29,7 +29,7 @@ export default {
   create(ctx) {
     ctx.lookDown();
     const { THREE, root, tex, audio, input, env } = ctx;
-    env.set({ sky: false, top: '#000', horizon: '#0d0907', bottom: '#000', hemi: ['#ffe8c8', '#100a06', 0.25], sun: ['#fff', 0] });
+    env.set({ sky: false, top: '#000', horizon: '#0d0907', bottom: '#000', hemi: ['#ffe8c8', '#463428', 0.7], sun: ['#fff', 0] });
     const H = 0.78;
     // mesa polida: quase se reflete
     const table = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 0.95, 0.05, 64), phys({ map: tex.get('tableWood'), roughness: 0.32, clearcoat: 1, clearcoatRoughness: 0.12 }));

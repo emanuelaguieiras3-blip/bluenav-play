@@ -22,21 +22,23 @@
   <div id="start">
     <div class="card">
       <div class="logo"><span class="dot"></span>BlueNav <b>Play</b></div>
-      <p class="tag">Realidade virtual direto no navegador.<br>Sem instalar nada.</p>
+      <p class="tag">Seus jogos, suas músicas e suas mãos.<br>VR no navegador para óculos de celular.</p>
       <div class="buttons">
         <button id="btn-xr" class="primary" hidden>Entrar em VR</button>
         <button id="btn-cardboard" class="primary">Óculos de celular (VR Box)</button>
+        <button id="btn-rhythm">Ritmo de Luz · escolher música</button>
         <button id="btn-flat">Tela normal</button>
       </div>
       <label class="check"><input type="checkbox" id="chk-hands" checked> Rastrear as mãos com a câmera</label>
       <label class="check"><input type="checkbox" id="chk-gemini" checked> Calibração das mãos com Gemini</label>
       <p id="status" class="status">Pronto.</p>
       <details class="help">
-        <summary>Gestos (iguais aos do Meta Quest)</summary>
+        <summary>Gestos inspirados no Meta Quest</summary>
         <ul>
           <li><b>Selecionar:</b> aponte o raio e pince (polegar + indicador), depois solte.</li>
           <li><b>Rolar / mover:</b> pince, segure e arraste. Janelas se movem pela barra embaixo delas.</li>
-          <li><b>Clicar com o dedo:</b> estique o indicador, leve a ponta até o botão e empurre para frente (ou deixe parado 0,65s).</li>
+          <li><b>Clicar com o dedo:</b> encoste o indicador no botão ou aponte e empurre. Recue antes de tocar novamente.</li>
+          <li><b>Jogos:</b> botão ? mostra comandos para uma ou duas mãos. Azul indica alvo; verde confirma clique.</li>
           <li><b>Menu:</b> olhe para a palma da mão e pince. Pince e segure para recentralizar.</li>
           <li><b>Teleporte:</b> aponte o indicador para o chão e pince para ir.</li>
           <li>Sem câmera: olhe para o botão por 0,65s ou toque na tela. No computador: clique, botão direito gira a visão, WASD anda, M abre o menu.</li>
@@ -47,7 +49,11 @@
   <div id="divider" hidden></div>
   <div id="video-layer" hidden>
     <div id="video-slots"></div>
-    <button id="video-close">Voltar ao VR</button>
+    <div id="video-controls">
+      <button id="video-resume" type="button">Reproduzir / ativar som</button>
+      <button id="video-close" type="button">Voltar ao VR</button>
+    </div>
+    <p id="video-status" role="status" aria-live="polite"></p>
   </div>
   <div id="debug" hidden></div>
   <script type="module" src="src/main.js"></script>

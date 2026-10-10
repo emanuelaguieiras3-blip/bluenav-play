@@ -28,9 +28,13 @@ export class Perf {
   // devolve false se este quadro deve ser pulado (limite de fps)
   shouldRender(t) {
     if (!this.capFps || this.app.renderer.xr.isPresenting) return true;
-    const min = 1000 / this.capFps - 1.5;
-    if (t - this._lastFrame < min) return false;
-    this._lastFrame = t;
+    const interval = 1000 / this.capFps;
+    if (!this._started || t - this._lastFrame > interval * 3) {
+      this._started = true; this._lastFrame = t; return true;
+    }
+    if (t - this._lastFrame < interval - 0.75) return false;
+    // Preserva a fase: em telas de 90 Hz, pular sempre um quadro limitava a 45 FPS.
+    this._lastFrame += interval;
     return true;
   }
 

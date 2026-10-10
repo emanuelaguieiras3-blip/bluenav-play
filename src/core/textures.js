@@ -2,9 +2,17 @@
 // Carregamento progressivo: gera 64px na hora e troca por 256px quando o navegador fica ocioso.
 import * as THREE from 'three';
 import { rng, clamp } from './util.js';
+import { detectDevice } from './perf.js';
 
 const MAX = 256;
 const LOW = 64;
+const RELIEF = new Map([
+  ['asphalt', 0.008], ['road', 0.008], ['dirt', 0.012], ['bark', 0.015], ['barkMoss', 0.015],
+  ['woodLight', 0.004], ['woodMedium', 0.005], ['bowWood', 0.002], ['leather', 0.004],
+  ['roughStone', 0.012], ['stoneTiles', 0.009], ['rockStrata', 0.013], ['dungeonWall', 0.011],
+  ['dungeonFloor', 0.008], ['brushedMetal', 0.0015], ['metalPanel', 0.003], ['marble', 0.001],
+  ['tableWood', 0.003], ['blockStone', 0.005], ['blockWood', 0.003], ['coral', 0.006],
+]);
 const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 30));
 
 // ---------- utilidades de pintura ----------
@@ -177,8 +185,8 @@ const DEFS = {
   roughStone: { repeat: [6, 2], draw(c, S, R) {
     const n = field(S, R, 6, 6, 5), m = field(S, R, 3, 3, 3);
     paint(c, S, (x, y, i, o) => {
-      const crack = Math.abs(m[i] - 0.5) < 0.012 ? 0.45 : 1;
-      const v = (52 + n[i] * 60 + (R() - 0.5) * 14) * crack; o[0] = v; o[1] = v; o[2] = v + 3;
+      const crack = 1 - Math.exp(-Math.pow((m[i] - 0.5) * 150, 2)) * 0.2;
+      const v = (58 + n[i] * 54 + (R() - 0.5) * 10) * crack; o[0] = v; o[1] = v; o[2] = v + 3;
     });
   } },
   sand: { repeat: [6, 6], draw(c, S, R) {
@@ -362,9 +370,9 @@ const DEFS = {
     const n = field(S, R, 6, 6, 5), m = field(S, R, 4, 4, 3);
     paint(c, S, (x, y, i, o) => {
       const band = Math.sin((y / S) * 28 + n[i] * 5) * 0.5 + 0.5;
-      const crack = Math.abs(m[i] - 0.5) < 0.01 ? 0.4 : 1;
-      const v = (112 + band * 26 + n[i] * 30 + (R() - 0.5) * 14) * crack;
-      o[0] = v; o[1] = v + 1; o[2] = v + 5;
+      const crack = 1 - Math.exp(-Math.pow((m[i] - 0.5) * 160, 2)) * 0.22;
+      const v = (116 + band * 18 + n[i] * 27 + (R() - 0.5) * 9) * crack;
+      o[0] = v + 3; o[1] = v + 1; o[2] = v - 3;
     });
   } },
   valley: { repeat: [6, 6], draw(c, S, R) {
@@ -408,6 +416,58 @@ const DEFS = {
     c.strokeStyle = '#d6b05a'; c.lineWidth = S / 64; c.strokeRect(S * 0.1, S * 0.1, S * 0.8, S * 0.8);
   } },
   rubber: { draw(c, S, R) { paint(c, S, (x, y, i, o) => { const v = 20 + (R() < 0.08 ? 10 : 0) + (R() - 0.5) * 6; o[0] = v; o[1] = v; o[2] = v + 1; }); } },
+  nebula: { draw(c, S, R) {
+    const n = field(S, R, 3, 2, 4), fine = field(S, R, 8, 8, 3);
+    paint(c, S, (x, y, i, o) => {
+      const band = Math.exp(-Math.pow((y / S - 0.5 - Math.sin(x / S * 5) * 0.12) * 4, 2));
+      const glow = band * Math.pow(n[i], 2) * 2;
+      o[0] = 20 + glow * 94; o[1] = 23 + glow * 58; o[2] = 42 + glow * 145;
+      o[3] = clamp(band * (n[i] * 0.9 + fine[i] * 0.15) * 240, 0, 255);
+    });
+    for (let i = 0; i < 80; i++) { c.fillStyle = 'rgba(223,235,255,.8)'; c.fillRect(R() * S, R() * S, Math.max(0.5, S / 256), Math.max(0.5, S / 256)); }
+  } },
+  planetBands: { repeat: [1, 1], draw(c, S, R) {
+    const n = field(S, R, 5, 16, 4);
+    paint(c, S, (x, y, i, o) => {
+      const wave = Math.sin(y / S * 52 + n[i] * 3) * 0.5 + 0.5;
+      const a = hex('#596e75'), b = hex('#c0b293'), v = mixc(a, b, wave * 0.65 + n[i] * 0.35);
+      o[0] = v[0]; o[1] = v[1]; o[2] = v[2];
+    });
+  } },
+  kitchenTile: { repeat: [3, 1], draw(c, S, R) {
+    c.fillStyle = '#d4cdbb'; c.fillRect(0, 0, S, S);
+    for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) {
+      c.fillStyle = (x + y) % 3 ? '#d8d0bc' : '#b6c5bb';
+      c.fillRect(x * S / 4 + 1, y * S / 4 + 1, S / 4 - 2, S / 4 - 2);
+      c.fillStyle = 'rgba(255,255,255,.15)'; c.fillRect(x * S / 4 + 2, y * S / 4 + 2, S / 4 - 4, S / 80);
+    }
+  } },
+  rug: { draw(c, S, R) {
+    c.fillStyle = '#8e6264'; c.fillRect(0, 0, S, S);
+    c.fillStyle = '#472b38'; c.fillRect(S * 0.06, S * 0.06, S * 0.88, S * 0.88);
+    c.strokeStyle = '#b49b73'; c.lineWidth = S * 0.02;
+    c.strokeRect(S * 0.11, S * 0.11, S * 0.78, S * 0.78);
+    for (let y = 0; y < 7; y++) for (let x = 0; x < 7; x++) {
+      const px = (0.2 + x * 0.1) * S, py = (0.2 + y * 0.1) * S;
+      c.beginPath(); c.moveTo(px, py - S * 0.025); c.lineTo(px + S * 0.025, py); c.lineTo(px, py + S * 0.025); c.lineTo(px - S * 0.025, py); c.closePath(); c.stroke();
+    }
+  } },
+  artPrint: { draw(c, S, R) {
+    const gradient = c.createLinearGradient(0, 0, 0, S); gradient.addColorStop(0, '#91a8a4'); gradient.addColorStop(1, '#293f49'); c.fillStyle = gradient; c.fillRect(0, 0, S, S);
+    for (let layer = 0; layer < 4; layer++) {
+      c.fillStyle = ['#759e98', '#536f72', '#374c56', '#29343c'][layer]; c.beginPath(); c.moveTo(0, S);
+      for (let x = 0; x <= S; x += S / 32) c.lineTo(x, S * (0.35 + layer * 0.14) + Math.sin(x / S * 5 + layer) * S * 0.12);
+      c.lineTo(S, S); c.fill();
+    }
+  } },
+  instrumentPanel: { draw(c, S, R) {
+    c.fillStyle = '#172c38'; c.fillRect(0, 0, S, S);
+    c.strokeStyle = '#43788a'; c.lineWidth = Math.max(1, S / 256);
+    for (let i = 1; i < 8; i++) { c.beginPath(); c.moveTo(0, i * S / 8); c.lineTo(S, i * S / 8); c.stroke(); }
+    c.strokeStyle = '#85dbce'; c.lineWidth = S / 80; c.beginPath();
+    for (let x = 0; x < S; x++) { const y = S * (0.4 + Math.sin(x / S * 14) * 0.12); if (x === 0) c.moveTo(x, y); else c.lineTo(x, y); } c.stroke();
+    c.fillStyle = '#d4dba4'; for (let i = 0; i < 4; i++) c.fillRect(S * (0.12 + i * 0.21), S * 0.75, S * 0.12, S * 0.055);
+  } },
 };
 
 function drawBark(c, S, R, moss) {
@@ -468,6 +528,7 @@ export class TexLib {
     this.cache = new Map();
     this.pending = []; // texturas esperando a versão 256 px
     this.aniso = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+    this.detail = !detectDevice().mobile;
   }
 
   _canvas(S) { const c = document.createElement('canvas'); c.width = c.height = S; return c; }
@@ -490,16 +551,36 @@ export class TexLib {
       // Carregamento progressivo: melhora para 256px no tempo ocioso
       const job = () => {
         if (tex.userData.disposed || tex.userData.hi) return;
-        const hi = this._canvas(MAX);
-        def.draw(hi.getContext('2d', { willReadFrequently: true }), MAX, rng(def.seed || name));
+        const size = this.detail && RELIEF.has(name) ? 512 : MAX;
+        const hi = this._canvas(size);
+        def.draw(hi.getContext('2d', { willReadFrequently: true }), size, rng(def.seed || name));
         tex.image = hi; tex.userData.hi = true; tex.dispose(); tex.needsUpdate = true;
+        if (tex.userData.relief) this._updateRelief(tex, hi, key, name, opt);
       };
       this.pending.push(job);
       idle(() => { const i = this.pending.indexOf(job); if (i >= 0) { this.pending.splice(i, 1); job(); } });
+      if (this.detail && RELIEF.has(name)) this._updateRelief(tex, cv, key, name, opt);
     }
     tex.userData.owner = opt.owner || 'game';
     this.cache.set(key, tex);
     return tex;
+  }
+
+  _updateRelief(tex, source, key, name, opt) {
+    const height = this._canvas(source.width), context = height.getContext('2d');
+    const image = source.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, source.width, source.height);
+    for (let i = 0; i < image.data.length; i += 4) {
+      const value = image.data[i] * 0.2126 + image.data[i + 1] * 0.7152 + image.data[i + 2] * 0.0722;
+      image.data[i] = image.data[i + 1] = image.data[i + 2] = value; image.data[i + 3] = 255;
+    }
+    context.putImageData(image, 0, 0);
+    let bump = tex.userData.relief;
+    if (!bump) {
+      bump = new THREE.CanvasTexture(height); bump.anisotropy = this.aniso;
+      bump.wrapS = tex.wrapS; bump.wrapT = tex.wrapT; bump.repeat.copy(tex.repeat);
+      bump.userData.owner = opt.owner || 'game'; this.cache.set(`${key}:relief`, bump);
+      tex.userData.relief = bump; tex.userData.reliefScale = RELIEF.get(name);
+    } else { bump.image = height; bump.needsUpdate = true; }
   }
 
   _pixel(name) {
@@ -530,9 +611,12 @@ export class TexLib {
 }
 
 // Texto em textura (rótulos de botões, placares)
-export function textCanvas(text, { w = 512, h = 128, font = 600, size = 0.5, fg = '#ffffff', bg = null, radius = 0.2, align = 'center', sub = null, subColor = '#cfe0ff' } = {}) {
-  const c = document.createElement('canvas'); c.width = w; c.height = h;
+export function textCanvas(text, { w = 512, h = 128, font = 600, size = 0.5, fg = '#ffffff', bg = null, radius = 0.2, align = 'center', sub = null, subColor = '#cfe0ff', canvas = null } = {}) {
+  const c = canvas || document.createElement('canvas');
+  if (c.width !== w) c.width = w;
+  if (c.height !== h) c.height = h;
   const x = c.getContext('2d');
+  x.clearRect(0, 0, w, h);
   if (bg) { x.fillStyle = bg; roundRect(x, 0, 0, w, h, Math.min(w, h) * radius); x.fill(); }
   x.fillStyle = fg; x.textAlign = align; x.textBaseline = 'middle';
   const px = Math.round(h * size * (sub ? 0.8 : 1));

@@ -57,10 +57,12 @@ export default {
     ceil.position.copy(floor.position).setY(H); root.add(ceil);
 
     ctx.rig.position.set(start[0], 0, start[1]);
+    ctx.rig.rotation.y = -Math.PI / 2; // Face the open east corridor, not the north wall.
     ctx.teleport({ enabled: true, walk: true, check: (p) => free(Math.round(p.x / C), Math.round(p.z / C)) });
 
     // tocha: cabo de madeira, chamas tremidas, fumaça fina
     const torch = new THREE.Group(); root.add(torch);
+    torch.position.copy(ctx.eye()).add(new THREE.Vector3(0.12, -0.2, 0));
     const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.024, 0.38, 8).translate(0, -0.19, 0), std({ map: tex.get('woodMedium'), color: '#3a2618' }));
     const wrap = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.026, 0.07, 8), std({ color: '#2a2018', roughness: 1 }));
     torch.add(handle, wrap);

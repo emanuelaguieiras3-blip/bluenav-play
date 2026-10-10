@@ -1,5 +1,5 @@
 // 🚀 DEFENSOR DE GALÁXIA — Frio e Silêncio Infinito
-import { Particles, glowTexture, std } from './common.js';
+import { Particles, glowTexture, std, sweptDistanceSq } from './common.js';
 
 export default {
   id: 'galaxy',
@@ -52,12 +52,14 @@ export default {
     const shotMat = new THREE.SpriteMaterial({ map: glowTexture('rgba(255,90,90,1)'), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
     let fireCd = 0, score = 0, shield = 100, push = new THREE.Vector3();
     const rc = new THREE.Raycaster();
+    const respawns = [], shotStart = new THREE.Vector3(), handStart = new THREE.Vector3();
+    const previousEye = ctx.eye();
 
     const cds = new Map(); // cadência própria de cada mão
     const fire = (p) => {
       cds.set(p.id, 0.3);
       const input = p; // cada mão mira com o próprio raio
-      const from = p.source === 'hand' || p.source === 'xr' ? p.handPos.clone() : ctx.eye().add(new THREE.Vector3(0, -0.25, 0));
+      const from = p.source === 'hand' || p.source === 'xr' ? p.ray.origin.clone() : ctx.eye().add(new THREE.Vector3(0, -0.25, 0));
       rc.ray.copy(input.ray); rc.far = 200; rc.camera = ctx.camera; // necessário para acertar sprites
       const hit = rc.intersectObjects(ships.map((x) => x.s), true)[0];
       // mira assistida leve
@@ -72,16 +74,20 @@ export default {
       beam.position.copy(from); beam.lookAt(end); beam.rotateY(Math.PI);
       root.add(beam); beams.push({ beam, t: 0 });
       audio.tone({ freq: 1400, to: 300, dur: 0.18, type: 'sawtooth', vol: 0.06 });
-      if (target) { explode(target.s.position.clone()); target.s.removeFromParent(); ships.splice(ships.indexOf(target), 1); score += 100; setTimeout(spawnShip, 1200); }
+      if (target) { explode(target.s.position.clone()); target.s.removeFromParent(); ships.splice(ships.indexOf(target), 1); score += 100; respawns.push(1.2); }
     };
 
     return {
       update(dt) {
+        for (let i = respawns.length - 1; i >= 0; i--) {
+          respawns[i] -= dt;
+          if (respawns[i] <= 0) { spawnShip(); respawns.splice(i, 1); }
+        }
         fireCd -= dt;
         // as duas mãos atiram: pinça = um tiro; apontar o indicador = rajada
         for (const p of ctx.pointers()) {
           const cd = (cds.get(p.id) ?? 0) - dt; cds.set(p.id, cd);
-          const want = (p.pinchDown && !p.uiBusy) || (p.source === 'hand' && p.gesture === 'apontando' && cd < -0.1);
+          const want = !p.uiBusy && ((p.pinchDown) || (p.source === 'hand' && p.gesture === 'apontando' && cd < -0.1));
           if (want && cd <= 0) fire(p);
         }
         // naves passam rápido, mas sempre dá tempo de reagir
@@ -98,15 +104,22 @@ export default {
         }
         const eye = ctx.eye();
         for (let i = enemyShots.length - 1; i >= 0; i--) {
-          const e = enemyShots[i]; e.sp.position.addScaledVector(e.v, dt);
+          const e = enemyShots[i]; shotStart.copy(e.sp.position); e.sp.position.addScaledVector(e.v, dt);
           const d = e.sp.position.distanceTo(eye);
+          const hitsPlayer = sweptDistanceSq(shotStart, e.sp.position, previousEye, eye) < 0.6 ** 2;
           // dá para destruir o tiro com o raio ou com a mão
-          if (d < 0.6 || ctx.pointers().some((p) => e.sp.position.distanceTo(p.handPos) < 0.35)) {
-            if (d < 0.6) { shield = Math.max(0, shield - 10); push.copy(e.v).setLength(0.5); audio.thud(); }
+          if (hitsPlayer || ctx.pointers().some((p) => {
+            handStart.copy(p.handPos);
+            const velocity = p.vel || p.handVel;
+            if (velocity) handStart.addScaledVector(velocity, -dt);
+            return sweptDistanceSq(shotStart, e.sp.position, handStart, p.handPos) < 0.35 ** 2;
+          })) {
+            if (hitsPlayer) { shield = Math.max(0, shield - 10); push.copy(e.v).setLength(0.5); audio.thud(); }
             else { audio.tone({ freq: 900, to: 400, dur: 0.1, vol: 0.08 }); score += 20; }
             e.sp.removeFromParent(); enemyShots.splice(i, 1);
           } else if (d > 120) { e.sp.removeFromParent(); enemyShots.splice(i, 1); }
         }
+        previousEye.copy(eye);
         // o impacto te empurra levemente pra trás, depois volta
         rig.position.addScaledVector(push, dt * 3); push.multiplyScalar(Math.exp(-4 * dt));
         rig.position.multiplyScalar(Math.exp(-0.8 * dt));

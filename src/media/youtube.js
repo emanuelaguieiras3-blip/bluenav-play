@@ -5,6 +5,7 @@ import { CONFIG } from '../../config.js';
 import { safeStorage } from '../core/util.js';
 import { wrapText, fitText, roundRect } from '../core/textures.js';
 import { T, drawIcon } from '../ui/theme.js';
+import { youtubeId } from './youtubeUrl.js';
 
 const API = 'https://www.googleapis.com/youtube/v3';
 
@@ -43,10 +44,15 @@ export function pickQuality() {
 let apiPromise = null;
 function loadYTApi() {
   if (window.YT && window.YT.Player) return Promise.resolve();
-  if (!apiPromise) apiPromise = new Promise((res) => {
-    window.onYouTubeIframeAPIReady = () => res();
-    const s = document.createElement('script'); s.src = 'https://www.youtube.com/iframe_api'; document.head.appendChild(s);
-  });
+  if (!apiPromise) {
+    apiPromise = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      const timer = setTimeout(() => { script.remove(); reject(new Error('Tempo esgotado')); }, 10000);
+      window.onYouTubeIframeAPIReady = () => { clearTimeout(timer); resolve(); };
+      script.onerror = () => { clearTimeout(timer); script.remove(); reject(new Error('API indisponível')); };
+      script.src = 'https://www.youtube.com/iframe_api'; document.head.appendChild(script);
+    }).catch(error => { apiPromise = null; throw error; });
+  }
   return apiPromise;
 }
 
@@ -58,48 +64,82 @@ export class VideoLayer {
     this.players = [];
     this.volume = 1;
     this.current = null;
+    this.revision = 0;
+    this.status = document.getElementById('video-status');
+    document.getElementById('video-resume').addEventListener('click', () => this.resume());
     document.getElementById('video-close').addEventListener('click', () => this.close());
   }
 
   async play(video) {
     this.close();
+    const id = youtubeId(video.id);
+    if (!id) return;
+    const revision = this.revision;
     this.current = video;
     this.el.hidden = false;
+    this.app.menu?.toggle(false);
     const stereo = this.app.mode === 'cardboard';
     this.slots.className = stereo ? 'stereo' : 'flat';
-    this.slots.innerHTML = stereo ? '<div><div id="yt0"></div></div><div><div id="yt1"></div></div>' : '<div><div id="yt0"></div></div>';
-    await loadYTApi();
-    const quality = pickQuality();
-    this.quality = quality;
-    const mk = (id, muted) => new Promise((res) => {
-      const p = new window.YT.Player(id, {
-        videoId: video.id, width: '100%', height: '100%',
-        playerVars: { autoplay: 1, playsinline: 1, rel: 0, modestbranding: 1, mute: muted ? 1 : 0, vq: quality.q },
-        events: {
-          onReady: (e) => { try { e.target.setPlaybackQuality(quality.q); e.target.setVolume(muted ? 0 : Math.round(this.volume * 100)); e.target.playVideo(); } catch { /* ok */ } res(p); },
-        },
-      });
+    this.quality = pickQuality();
+    this.status.textContent = 'Carregando vídeo. Se não iniciar, toque em Reproduzir ou no player.';
+    // Embed immediately: playback must not depend on the optional control SDK.
+    const frames = Array.from({ length: stereo ? 2 : 1 }, (_, eye) => {
+      const slot = document.createElement('div'), frame = document.createElement('iframe');
+      frame.id = `yt${eye}`; frame.title = `${video.title || 'YouTube'}${stereo ? ` · olho ${eye + 1}` : ''}`;
+      frame.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen'; frame.allowFullscreen = true;
+      frame.referrerPolicy = 'strict-origin-when-cross-origin';
+      const params = new URLSearchParams({ enablejsapi: '1', autoplay: '1', playsinline: '1', rel: '0', mute: eye ? '1' : '0' });
+      if (/^https?:$/.test(location.protocol)) params.set('origin', location.origin);
+      frame.src = `https://www.youtube.com/embed/${id}?${params}`;
+      slot.append(frame); this.slots.append(slot); return frame;
     });
-    this.players = [await mk('yt0', false)];
-    if (stereo) {
-      // segundo olho: mesmo vídeo, sem som, sincronizado
-      this.players.push(await mk('yt1', true));
+    const hist = safeStorage.get('bn.history', []);
+    safeStorage.set('bn.history', [video, ...hist.filter(h => h.id !== id)].slice(0, 20));
+    try {
+      await loadYTApi();
+      if (revision !== this.revision) return;
+      this.players = frames.map((frame, eye) => new window.YT.Player(frame, { events: {
+        onReady: event => {
+          if (revision !== this.revision) return;
+          try { if (eye) event.target.mute(); else event.target.setVolume(Math.round(this.volume * 100)); event.target.playVideo(); } catch {}
+        },
+        onStateChange: event => {
+          if (revision === this.revision && !eye && event.data === 1) this.status.textContent = '';
+        },
+        onAutoplayBlocked: () => { if (revision === this.revision) this.status.textContent = 'Toque em Reproduzir para autorizar vídeo e som.'; },
+        onError: event => {
+          if (revision !== this.revision) return;
+          const errors = { 100: 'Vídeo removido ou privado.', 101: 'O autor não permite reproduzir este vídeo em outros sites.',
+            150: 'O autor não permite reproduzir este vídeo em outros sites.', 153: 'YouTube recusou a identificação do site. Abra o BlueNav por HTTPS no navegador.' };
+          this.status.textContent = errors[event.data] || 'Não foi possível reproduzir este vídeo. Escolha outro vídeo.';
+        },
+      } }));
+    } catch {
+      if (revision === this.revision) this.status.textContent = 'Use os controles do próprio vídeo. Os controles adicionais não carregaram.';
+      return;
+    }
+    if (stereo && revision === this.revision) {
       this.sync = setInterval(() => {
         const [a, b] = this.players;
         try { const d = a.getCurrentTime() - b.getCurrentTime(); if (Math.abs(d) > 0.25) b.seekTo(a.getCurrentTime(), true); if (a.getPlayerState() !== b.getPlayerState()) (a.getPlayerState() === 1 ? b.playVideo() : b.pauseVideo()); } catch { /* ok */ }
-      }, 1500);
+      }, 500);
     }
-    const hist = safeStorage.get('bn.history', []);
-    safeStorage.set('bn.history', [video, ...hist.filter((h) => h.id !== video.id)].slice(0, 20));
+  }
+
+  resume() {
+    for (const [eye, player] of this.players.entries()) {
+      try { if (!eye) { player.unMute(); player.setVolume(Math.round(this.volume * 100)); } else player.mute(); player.playVideo(); } catch {}
+    }
   }
 
   setVolume(v) { this.volume = v; try { this.players[0]?.setVolume(Math.round(v * 100)); } catch { /* ok */ } }
   togglePause() { const p = this.players[0]; if (!p) return; try { p.getPlayerState() === 1 ? p.pauseVideo() : p.playVideo(); } catch { /* ok */ } }
 
   close() {
+    this.revision++;
     clearInterval(this.sync);
     for (const p of this.players) try { p.destroy(); } catch { /* ok */ }
-    this.players = []; this.slots.innerHTML = ''; this.el.hidden = true;
+    this.players = []; this.slots.innerHTML = ''; this.el.hidden = true; this.current = null;
   }
 }
 
@@ -110,18 +150,20 @@ const TABS = [
   { id: 'v180', label: '180°' },
   { id: 'rec', label: 'Para você' },
   { id: 'search', label: 'Buscar', icon: 'search' },
+  { id: 'link', label: 'Abrir link' },
 ];
 
 export class CatalogContent {
   constructor(app) {
     this.app = app; this.icon = 'YouTube'; this.glyph = 'play';
     this.tab = 'trend'; this.items = []; this.page = { next: null, prev: null, token: '' };
-    this.query = ''; this.status = 'Carregando…'; this.thumbs = new Map();
+    this.query = ''; this.status = 'Carregando…'; this.thumbs = new Map(); this.revision = 0;
   }
 
   attach(win) { this.win = win; this.load(); }
 
   async load(token = '') {
+    const revision = ++this.revision;
     this.status = 'Carregando…'; this.items = []; this.win.invalidate();
     try {
       let r;
@@ -133,10 +175,11 @@ export class CatalogContent {
         const words = h.slice(0, 3).map((v) => v.title.split(/\s+/).filter((w) => w.length > 3).slice(0, 2).join(' ')).join(' ');
         r = await ytSearch(words || 'realidade virtual 360', { pageToken: token });
       } else r = this.query ? await ytSearch(this.query, { pageToken: token }) : { items: [], next: null, prev: null };
+      if (revision !== this.revision) return;
       this.items = r.items; this.page = { next: r.next, prev: r.prev, token };
       this.status = this.items.length ? '' : (this.tab === 'search' ? 'Toque em "Buscar" para digitar.' : 'Nada encontrado.');
       for (const it of this.items) this._thumb(it);
-    } catch (e) { this.status = 'Erro do YouTube: ' + e.message; }
+    } catch (e) { if (revision !== this.revision) return; this.status = 'YouTube indisponível. Tente Abrir link ou buscar novamente.'; }
     this.win.invalidate();
   }
 
@@ -198,6 +241,13 @@ export class CatalogContent {
   }
 
   _tab(id) {
+    if (id === 'link') {
+      this.app.keyboard.show('', (value) => {
+        const videoId = youtubeId(value);
+        if (!videoId) { this.status = 'Cole um link HTTPS de vídeo do YouTube.'; this.win.invalidate(); return; }
+        this.app.playVideo({ id: videoId, title: 'YouTube', channel: '', thumb: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg` });
+      }); return;
+    }
     if (id === 'search') {
       this.tab = 'search';
       this.app.keyboard.show(this.query, (q) => { this.query = q; this.load(); });
@@ -206,6 +256,7 @@ export class CatalogContent {
     }
     this.tab = id; this.load();
   }
+  dispose() { this.revision++; }
 }
 
 // ---------- Janela do player ----------
@@ -227,7 +278,7 @@ export class PlayerContent {
     const q = this.app.video.quality?.label || 'auto';
     const xr = this.app.renderer.xr.isPresenting;
     x.fillStyle = T.textDim; x.font = `500 22px ${T.font}`;
-    fitText(x, xr ? 'No modo imersivo o YouTube não aparece dentro da cena: saia do VR para assistir.' : `Qualidade adaptativa: ${q} · 360°/180°: arraste ou gire o celular no player`, 36, 100 + th + 76, W - 72);
+    fitText(x, xr ? 'No modo imersivo o YouTube não aparece dentro da cena: saia do VR para assistir.' : `Qualidade adaptativa: ${q} · Painel 2D em tela dividida no VR Box`, 36, 100 + th + 76, W - 72);
     const bw = 230, by = H - 74;
     const btn = (label, bx, fn, key, light) => { x.fillStyle = light ? T.surfaceActive : T.surface; roundRect(x, bx, by, bw, 54, 27); x.fill(); x.fillStyle = light ? T.textOnLight : T.text; x.textAlign = 'center'; x.font = `600 26px ${T.font}`; x.fillText(label, bx + bw / 2, by + 28); win.items.push({ x: bx, y: by, w: bw, h: 54, r: 27, key, onClick: fn }); };
     btn('Assistir', W / 2 - bw * 1.5 - 20, () => this.app.video.play(this.video), 'play', true);
