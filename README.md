@@ -157,6 +157,9 @@ Tudo em `config.js` fica visível para quem abrir o site.
 
 - Os 16 jogos mostram instruções para uma ou duas mãos e o gesto atual. O botão `?` oculta ou mostra o guia.
 - O toque direto detecta o percurso do dedo entre quadros. Cada contato gera um clique, com confirmação verde e som. Retire o dedo para clicar novamente.
+- A biblioteca e a barra ficam ao alcance da mão (aproximadamente 0,6 m). A profundidade é estimada com o campo de visão físico da câmera, independente da ampliação do passthrough. A perda de rastreamento exige recuar o dedo antes de um novo contato.
+- Ajustes rápidos abrem dentro do VR. O botão de câmera pode abrir o feed e alternar o mundo real; o painel informa se a calibração Gemini está ativa ou indisponível.
+- O clique é decidido localmente. Gemini continua como auxiliar de calibração em segundo plano; rede lenta, timeout ou erro da API não bloqueiam o toque. Não há validação automática no celular físico.
 - Parar o dedo sobre um botão não clica automaticamente. O clique por tempo continua disponível no modo olhar.
 - Poses inválidas e dados atrasados não geram novos cliques. O corretor preserva o comprimento dos dedos durante oclusões.
 - Gemini recebe no máximo seis quadros por chamada, em segundo plano. Respostas inválidas, canceladas ou associadas a outra mão são descartadas. Há timeout de oito segundos. Gemini não executa 60 inferências por segundo.

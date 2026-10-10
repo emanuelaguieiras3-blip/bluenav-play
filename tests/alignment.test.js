@@ -124,3 +124,16 @@ test('main-thread fallback detects and displays one snapshot instead of live vid
     assert.equal(canvas.width, 960); assert.equal(canvas.height, 540); tracker.stop();
   } finally { globalThis.document = oldDocument; }
 });
+
+test('estimated physical hand depth stays constant when passthrough magnification changes', () => {
+  const original = CONFIG.PASSTHROUGH_FILL;
+  try {
+    const depths = [];
+    for (const fill of [false, true]) {
+      CONFIG.PASSTHROUGH_FILL = fill;
+      const { tracker } = fixture(); tracker._process(result(), 1 / 30, 100);
+      depths.push(tracker.hands[0].pontos[0][2]); tracker.stop();
+    }
+    assert.ok(Math.abs(depths[0] - depths[1]) < 1e-10);
+  } finally { CONFIG.PASSTHROUGH_FILL = original; }
+});

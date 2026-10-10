@@ -131,6 +131,26 @@ test('stale hand cannot press a button', () => {
   f.ui.update(1 / 60, f.input); assert.equal(f.clicks(), 0);
 });
 
+test('fast touch from outside proximity range fires once even before the button had contact', () => {
+  const f = uiFixture();
+  f.p.pokeTip.z = -0.29; f.ui.update(1 / 60, f.input);
+  assert.equal(f.clicks(), 0);
+  f.p.pokeTip.z = -0.43; f.ui.update(1 / 60, f.input);
+  assert.equal(f.clicks(), 1);
+  for (let i = 0; i < 20; i++) f.ui.update(1 / 60, f.input);
+  assert.equal(f.clicks(), 1);
+});
+
+test('tracking recovery behind a button cannot create a click; retreat rearms contact', () => {
+  const f = uiFixture(); f.ui.update(1 / 60, f.input);
+  f.p.stale = true; f.ui.update(1 / 60, f.input);
+  f.p.stale = false; f.p.pokeTip.z = -0.41; f.ui.update(1 / 60, f.input);
+  assert.equal(f.clicks(), 0);
+  f.p.pokeTip.z = -0.35; f.ui.update(1 / 60, f.input);
+  f.p.pokeTip.z = -0.4; f.ui.update(1 / 60, f.input);
+  assert.equal(f.clicks(), 1);
+});
+
 test('displayed line stays collinear with cast ray even with old game hit', () => {
   const f = uiFixture(); f.ui.targets = []; f.p.pokeTip = null;
   f.app.pointerHit = new THREE.Vector3(1, 1, -2);

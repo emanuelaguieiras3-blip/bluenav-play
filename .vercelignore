@@ -4,3 +4,5 @@
 .claude
 android-app
 .github
+artifacts
+tests

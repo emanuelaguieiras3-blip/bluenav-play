@@ -22,6 +22,7 @@ export function drawIcon(x, name, cx, cy, s, color = T.text, lw = Math.max(2, s 
   x.strokeStyle = color; x.fillStyle = color; x.lineWidth = lw * 24 / s; x.lineCap = 'round'; x.lineJoin = 'round';
   const P = (d) => x.stroke(new Path2D(d));
   switch (name) {
+    case 'settings': x.beginPath(); x.arc(12, 12, 6, 0, Math.PI * 2); x.stroke(); x.beginPath(); x.arc(12, 12, 2, 0, Math.PI * 2); x.stroke(); for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; x.beginPath(); x.moveTo(12 + Math.cos(a) * 6, 12 + Math.sin(a) * 6); x.lineTo(12 + Math.cos(a) * 9, 12 + Math.sin(a) * 9); x.stroke(); } break;
     case 'home': P('M3 11 12 4l9 7M5.5 9.5V20h13V9.5M10 20v-5h4v5'); break;
     case 'grid': for (const [a, b] of [[4, 4], [13, 4], [4, 13], [13, 13]]) { x.beginPath(); x.roundRect(a, b, 7, 7, 1.8); x.stroke(); } break;
     case 'play': P('M8 5.5v13l10.5-6.5z'); break;

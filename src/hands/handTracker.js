@@ -159,7 +159,10 @@ export class HandTracker {
         wSum += Math.hypot(wl[a].x - wl[b].x, wl[a].y - wl[b].y);
         iSum += Math.hypot(lm[a].x - lm[b].x, (lm[a].y - lm[b].y) * ar);
       }
-      const d = Math.min(0.9, Math.max(0.18, (f * wSum) / Math.max(1e-4, iSum)));
+      // Depth comes from the physical camera lens, not the enlarged display.
+      // Changing passthrough fill must not move the hand toward/away from buttons.
+      const physicalFocal = 1 / (2 * Math.tan(HFOV / 2));
+      const d = Math.min(1.2, Math.max(0.18, (physicalFocal * wSum) / Math.max(1e-4, iSum)));
       // posição aproximada do pulso só para associar a detecção à mão certa
       const guess = [sx * ((lm[0].x - 0.5) * d) / f, -((lm[0].y - 0.5) * ar * d) / f, -d];
       // O MediaPipe supõe imagem espelhada (selfie); nossos quadros não são espelhados,
@@ -178,8 +181,9 @@ export class HandTracker {
       pairs.push([Math.hypot(det.guess[0] - sl.wrist[0], det.guess[1] - sl.wrist[1], det.guess[2] - sl.wrist[2]), det, sl]);
     }
     pairs.sort((x, y) => x[0] - y[0]);
+    const associationLimit = dets.length === 1 && slots.filter(sl => now - sl.lastSeen < 400).length === 1 ? 0.5 : 0.25;
     for (const [dist, det, sl] of pairs) {
-      if (det.slot || used.has(sl) || dist > 0.25) continue;
+      if (det.slot || used.has(sl) || dist > associationLimit) continue;
       det.slot = sl; used.add(sl);
     }
     for (const det of dets) {

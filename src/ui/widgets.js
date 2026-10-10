@@ -57,7 +57,7 @@ export function makeButton(app, {
   inner.add(face);
   app.ui.add(face, {
     onClick, dwell, press: inner, owner, keySound,
-    onHover: (on) => { st.hover = on; inner.position.z = on ? 0.006 : 0; draw(); onHover?.(on); },
+    onHover: (on) => { st.hover = on; inner.scale.setScalar(on ? 1.035 : 1); draw(); onHover?.(on); },
   });
   face.userData.owner = owner;
   group.userData.body = face;

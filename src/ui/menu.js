@@ -7,9 +7,9 @@ import { GAMES } from '../games/index.js';
 import { T } from './theme.js';
 import { DEG } from '../core/util.js';
 
-const R = 1.1;               // raio do arco
-const SPAN = 62 * DEG;       // largura angular da biblioteca
-const COLS = 6;
+const R = 0.64;              // biblioteca ao alcance do dedo
+const SPAN = 72 * DEG;
+const COLS = 4;
 
 // Arte de cada bloco: a própria textura do jogo (ou um desenho simples)
 const ART = {
@@ -50,23 +50,24 @@ export class ArcMenu {
 
     // ---- painel curvo da biblioteca ----
     const lib = new THREE.Group(); this.lib = lib; this.group.add(lib);
-    const H = 0.62;
+    const H = 0.70;
     const pc = document.createElement('canvas'); pc.width = 1400; pc.height = Math.round(1400 * H / (SPAN * R));
     const px = pc.getContext('2d');
     px.fillStyle = T.panel; px.beginPath(); px.roundRect(0, 0, pc.width, pc.height, 46); px.fill();
     px.fillStyle = T.text; px.font = `600 40px ${T.font}`; px.textBaseline = 'middle'; px.fillText('Biblioteca', 52, 62);
     px.fillStyle = T.textDim; px.font = `500 26px ${T.font}`; px.fillText(`${GAMES.length} apps`, 262, 64);
+    px.strokeStyle = T.line; px.lineWidth = 2; px.beginPath(); px.moveTo(52, 108); px.lineTo(pc.width - 52, 108); px.stroke();
     const ptex = new THREE.CanvasTexture(pc); ptex.colorSpace = THREE.SRGBColorSpace; ptex.anisotropy = 4;
     const panel = new THREE.Mesh(new THREE.CylinderGeometry(R + 0.02, R + 0.02, H, 48, 1, true, Math.PI - SPAN / 2, SPAN), new THREE.MeshBasicMaterial({ map: ptex, transparent: true, side: THREE.BackSide, depthWrite: false }));
     // CylinderGeometry gira no sentido anti-horário visto de cima: espelha o U para o texto ficar certo
     ptex.wrapS = THREE.RepeatWrapping; ptex.repeat.x = -1;
     lib.add(panel);
 
-    const step = (SPAN * 0.9) / COLS, tileW = step * R * 0.9, tileH = tileW * 0.82;
+    const step = (SPAN * 0.9) / COLS, tileW = step * R * 0.9, tileH = tileW * 0.72;
     GAMES.forEach((g, i) => {
       const r = Math.floor(i / COLS), c = i % COLS;
       const a = (c - (COLS - 1) / 2) * step;
-      const y = 0.12 - r * (tileH + 0.025);
+      const y = 0.16 - r * (tileH + 0.02);
       const tile = this._tile(g, tileW, tileH);
       tile.position.set(Math.sin(a) * R, y, -Math.cos(a) * R);
       tile.rotation.y = -a;
@@ -74,35 +75,63 @@ export class ArcMenu {
     });
     lib.position.y = 0.08;
 
+    // Ajustes rápidos permanecem dentro do VR, no mesmo alcance da biblioteca.
+    const quick = new THREE.Group(); this.quick = quick; quick.visible = false;
+    quick.position.set(0, 0.08, -0.60); this.group.add(quick);
+    quick.add(makeLabel('', { w: 0.68, h: 0.48, bg: T.panel, radius: 0.12 }));
+    const title = makeLabel('Ajustes rápidos', { w: 0.57, h: 0.065, bg: 'rgba(0,0,0,0)', size: 0.46 });
+    title.position.set(0, 0.17, 0.003); quick.add(title);
+    const options = [
+      { label: 'Mundo real', icon: 'eye', fn: () => this.toggleCamera() },
+      { label: 'Recentralizar', icon: 'recenter', fn: () => app.recenter() },
+      { label: 'Teclado', icon: 'keyboard', fn: () => app.keyboard.show('', null) },
+      { label: 'Segurança', icon: 'eye', fn: () => app.openSecurity() },
+    ];
+    options.forEach((it, i) => {
+      const b = makeButton(app, { w: 0.28, h: 0.09, label: it.label, icon: it.icon, onClick: it.fn, fontSize: 0.28 });
+      b.position.set(i % 2 ? 0.155 : -0.155, 0.055 - Math.floor(i / 2) * 0.115, 0.005);
+      quick.add(b); if (!i) this.cameraButton = b;
+    });
+    this.aiStatus = makeLabel('', { w: 0.60, h: 0.045, bg: 'rgba(0,0,0,0)', size: 0.34, fg: T.textDim });
+    this.aiStatus.position.set(0, -0.18, 0.003); quick.add(this.aiStatus);
+
     // ---- barra universal ----
     const bar = new THREE.Group(); this.bar = bar; this.group.add(bar);
-    const pill = makeLabel('', { w: 0.83, h: 0.085, bg: 'rgba(24,25,28,0.92)' });
+    const pill = makeLabel('', { w: 0.78, h: 0.09, bg: 'rgba(24,25,28,0.96)' });
     bar.add(pill);
     this.clock = makeLabel('', { w: 0.1, h: 0.05, bg: 'rgba(0,0,0,0)', size: 0.5 });
-    this.clock.position.set(-0.35, 0, 0.002); bar.add(this.clock);
+    this.clock.position.set(-0.315, 0, 0.002); bar.add(this.clock);
     this.tip = makeLabel('', { w: 0.18, h: 0.042, bg: 'rgba(242,243,245,0.96)', fg: T.textOnLight, size: 0.48 });
     this.tip.visible = false; bar.add(this.tip);
     const items = [
-      { icon: 'grid', tip: 'Biblioteca', fn: () => { lib.visible = !lib.visible; } },
-      { icon: 'play', tip: 'YouTube', fn: () => app.openYouTube() },
-      { icon: 'grid', tip: 'Jogos externos', fn: () => app.openExternalApps() },
-      { icon: 'eye', tip: 'Security', fn: () => app.openSecurity() },
-      { icon: 'keyboard', tip: 'Teclado', fn: () => app.keyboard.show('', null) },
-      { icon: 'eye', tip: 'Mundo real (câmera)', fn: () => { if (!app.passthrough.available) { this.tip.userData.set('Só no modo óculos'); return; } app.passthrough.toggle(); } },
-      { icon: 'recenter', tip: 'Recentralizar', fn: () => app.recenter() },
       { icon: 'home', tip: 'Início', fn: () => app.loadGame('lobby') },
+      { icon: 'grid', tip: 'Biblioteca', panel: 'library', fn: () => this.showPanel('library') },
+      { icon: 'play', tip: 'YouTube', fn: () => app.openYouTube() },
+      { icon: 'block', tip: 'Jogos externos', fn: () => app.openExternalApps() },
+      { icon: 'keyboard', tip: 'Teclado', fn: () => app.keyboard.show('', null) },
+      { icon: 'settings', tip: 'Ajustes rápidos', panel: 'quick', fn: () => this.showPanel('quick') },
       { icon: 'close', tip: 'Fechar menu', fn: () => this.toggle(false) },
     ];
+    this.dockButtons = [];
     items.forEach((it, i) => {
       const b = makeButton(app, {
-        w: 0.06, h: 0.06, icon: it.icon, variant: 'ghost', round: true, onClick: it.fn,
+        w: 0.072, h: 0.072, icon: it.icon, variant: 'ghost', round: true, onClick: it.fn,
         onHover: (on) => { this.tip.visible = on; if (on) { this.tip.userData.set(it.tip); this.tip.position.set(b.position.x, 0.075, 0.004); } },
       });
-      b.position.set(-0.255 + i * 0.072, 0, 0.004);
+      b.position.set(-0.21 + i * 0.085, 0, 0.004);
       bar.add(b);
+      this.dockButtons.push({ button: b, panel: it.panel });
     });
-    bar.position.set(0, -0.3, -0.98);
-    bar.rotation.x = -0.25;
+    bar.position.set(0, -0.33, -0.58);
+    bar.rotation.x = -0.15;
+    this.showPanel('library');
+    // The system menu must remain visible over nearby game geometry.
+    this.group.traverse(o => {
+      if (!o.isMesh) return;
+      o.renderOrder = o.userData.ui ? 310 : 300;
+      o.material.depthTest = false; o.material.depthWrite = false; o.material.toneMapped = false;
+    });
+    for (const label of [this.clock, this.tip, title, this.aiStatus]) label.renderOrder = 320;
     this._clockT = 0;
   }
 
@@ -131,7 +160,7 @@ export class ArcMenu {
     app.ui.add(mesh, {
       owner: 'ui', press: inner,
       onClick: () => app.loadGame(g.id),
-      onHover: (on) => { hover = on; inner.position.z = on ? 0.02 : 0; inner.scale.setScalar(on ? 1.06 : 1); draw(); },
+      onHover: (on) => { hover = on; inner.scale.setScalar(on ? 1.035 : 1); draw(); },
     });
     return outer;
   }
@@ -142,10 +171,29 @@ export class ArcMenu {
       const c = this.app.camera.position, yaw = this.app.headYaw();
       this.group.position.set(c.x, c.y - 0.1, c.z);
       this.group.rotation.set(0, yaw, 0);
-      this.lib.visible = true;
+      this.showPanel('library');
       this.group.visible = true;
       this._tick();
     }
+  }
+
+  showPanel(panel) {
+    this.lib.visible = panel === 'library'; this.quick.visible = panel === 'quick';
+    this.dockButtons?.forEach(({ button, panel: item }) => button.userData.setActive(item === panel));
+  }
+
+  async toggleCamera() {
+    if (this._cameraBusy) return;
+    if (this.app.passthrough.available) { this.app.passthrough.toggle(); return; }
+    this._cameraBusy = true; this.cameraButton.userData.setLabel('Abrindo câmera…');
+    try {
+      const { getCamera } = await import('../core/cameraFeed.js');
+      const tracker = this.app.hands;
+      const video = tracker?.video || await getCamera('environment');
+      this.app.passthrough.attach(video, !!tracker?.mirror);
+      this.app.passthrough.toggle(true); this._cameraError = false;
+    } catch { this._cameraError = true; }
+    finally { this._cameraBusy = false; }
   }
 
   _tick() {
@@ -160,6 +208,13 @@ export class ArcMenu {
     // abre crescendo e subindo de leve, como no Quest
     this.group.scale.setScalar(0.94 + 0.06 * this.anim);
     this.lib.position.y = 0.08 - (1 - this.anim) * 0.04;
+    if (this.quick.visible) {
+      this.cameraButton.userData.setActive(this.app.passthrough.available && !!this.app.passthrough.on);
+      if (!this._cameraBusy) this.cameraButton.userData.setLabel(this.app.passthrough.available ? 'Mundo real' : this._cameraError ? 'Câmera bloqueada' : 'Ativar câmera');
+      const ai = this.app.hands?.gemini;
+      const status = !ai?.enabled ? 'IA: desligada · toque ativo' : ai.status.startsWith('ok') ? 'IA: calibração ativa' : ai.status.startsWith('erro') || ai.status.includes('esgotado') || ai.status === 'sem chave' ? 'IA: indisponível · toque ativo' : 'IA: aguardando · toque ativo';
+      this.aiStatus.userData.set(status);
+    }
     if ((this._clockT += dt) > 5) { this._clockT = 0; this._tick(); }
   }
 }

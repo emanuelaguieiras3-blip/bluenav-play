@@ -130,7 +130,7 @@ export class UI {
     s.lastP = p;
     if (p.stale && !p.system) {
       // Tracking dropout is not a release. Keep the grab, suppress new actions.
-      s.press = null; s.prevTip = null;
+      s.press = null; s.prevTip = null; s.contact.suspend();
       this._clearHover(s); s.cursor.visible = false; s.line.visible = false;
       return;
     }
@@ -151,6 +151,7 @@ export class UI {
     // toque direto com o dedo (perto do painel o Quest troca o raio pelo dedo)
     let hit = null, poking = false, pokeClick = false;
     if (p.pokeTip && vis.length) {
+      const previousTip = s.prevTip?.clone();
       const eye = app.camera.getWorldPosition(new THREE.Vector3());
       const dir = p.pokeTip.clone().sub(eye).normalize();
       this.raycaster.set(p.pokeTip.clone().addScaledVector(dir, -0.06), dir);
@@ -173,7 +174,8 @@ export class UI {
         if (normal.dot(eye.clone().sub(ph.point)) < 0) normal.negate();
         const depth = -p.pokeTip.clone().sub(ph.point).dot(normal);
         const contactSub = this._subFor(ph);
-        pokeClick = s.contact.update(contactSub ? ph.object.uuid + '|' + contactSub.key : null, depth);
+        const previousDepth = previousTip ? -previousTip.sub(ph.point).dot(normal) : null;
+        pokeClick = s.contact.update(contactSub ? ph.object.uuid + '|' + contactSub.key : null, depth, previousDepth);
         if (pokeClick) s.pokePoint = ph.point.clone();
       } else if (!s.pokePoint || p.pokeTip.distanceTo(s.pokePoint) > 0.045) s.contact.reset();
     } else s.prevTip = null;
