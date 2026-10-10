@@ -23,7 +23,9 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - uses: android-actions/setup-android@v3
+      # o SDK do Android já vem instalado na máquina do GitHub; só aceita as licenças
+      - name: Licenças do Android SDK
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
 
       - name: Gerar projeto Android (Capacitor)
         working-directory: android-app
