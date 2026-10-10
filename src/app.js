@@ -179,6 +179,7 @@ export class App {
       try {
         const { HandTracker } = await import('./hands/handTracker.js');
         this.hands = new HandTracker();
+        this.hands.hfovProvider = () => this.passthrough.displayHFOV; // mão virtual em cima da mão real
         this.hands.gemini.enabled = gemini;
         if (gemini) this.hands.gemini.status = 'aguardando mão';
         await this.hands.start({ facing: mode === 'cardboard' ? 'environment' : 'user', onStatus });

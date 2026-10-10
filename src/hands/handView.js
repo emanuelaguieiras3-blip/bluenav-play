@@ -64,7 +64,9 @@ export class HandView {
       const st = h.pinchStrength || 0;
       v.tips[0].position.copy(P[4]); v.tips[1].position.copy(P[8]);
       v.tipMat.opacity = st * st * 0.9;
-      v.mat.opacity = h === input.systemHand ? 0.22 : 0.32;
+      // sobre o mundo real a mão fica mais discreta (só um contorno claro em cima da mão de verdade)
+      const real = input.app.passthrough?.covering;
+      v.mat.opacity = (h === input.systemHand ? 0.22 : 0.32) * (real ? 0.7 : 1);
     });
     const sh = input.systemHand;
     this.sys.visible = !!sh && this.visible;

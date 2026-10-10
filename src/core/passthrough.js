@@ -49,6 +49,8 @@ export class Passthrough {
       w = 2 * DIST * Math.tan((CONFIG.CAMERA_HFOV * Math.PI / 180) / 2); h = w / va;
     }
     this.mesh.scale.set(w * (this.mirror ? -1 : 1), h, 1);
+    // campo de visão horizontal com que a câmera aparece: o rastreador das mãos usa o mesmo
+    this.displayHFOV = 2 * Math.atan((w / 2) / DIST);
   }
 
   toggle(v = !this.on) { this.on = v; safeStorage.set('bn.passthrough', v); }
@@ -65,7 +67,7 @@ export class Passthrough {
     this.k += ((want ? 1 : 0) - this.k) * Math.min(1, dt * 8);
     if (!want && this.k < 0.01) this.k = 0;
     this.mesh.material.opacity = this.k;
-    if (this.k > 0) this._fit();
+    this._fit(); // barato (só recalcula se algo mudou); mantém mão e imagem alinhadas
     this.mesh.visible = this.k > 0.001;
 
     const scene = app.scene;

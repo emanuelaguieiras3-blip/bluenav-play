@@ -117,7 +117,10 @@ export class HandTracker {
   _process(res, dt, now) {
     const vw = this.video.videoWidth || 640, vh = this.video.videoHeight || 480;
     const ar = vh / vw;
-    const f = 1 / (2 * Math.tan(HFOV / 2)); // focal em unidades da largura da imagem
+    // Campo de visão usado na conversão: o MESMO com que a imagem da câmera aparece no passthrough.
+    // Assim a mão virtual fica exatamente em cima da mão real vista nos óculos.
+    const hfov = (this.hfovProvider && this.hfovProvider()) || HFOV;
+    const f = 1 / (2 * Math.tan(hfov / 2)); // focal em unidades da largura da imagem
     const sx = this.mirror ? -1 : 1;
     const n = res.landmarks ? res.landmarks.length : 0;
     const dets = [];
@@ -168,10 +171,13 @@ export class HandTracker {
       if (!sl.d) sl.d = det.d;
       else { const jump = Math.abs(det.d - sl.d); sl.d += (det.d - sl.d) * (jump > 0.12 ? 0.6 : 0.22); }
       const d = sl.d;
-      const wx = sx * ((lm[0].x - 0.5) * d) / f;
-      const wy = -((lm[0].y - 0.5) * ar * d) / f;
+      // cada ponto sai do próprio pixel da imagem (alinha com a mão real); a profundidade de cada
+      // junta vem do modelo 3D do MediaPipe em relação ao pulso
       const pts = new Array(21);
-      for (let i = 0; i < 21; i++) pts[i] = [wx + sx * (wl[i].x - wl[0].x), wy - (wl[i].y - wl[0].y), -d - (wl[i].z - wl[0].z)];
+      for (let i = 0; i < 21; i++) {
+        const di = Math.max(0.1, d + (wl[i].z - wl[0].z));
+        pts[i] = [sx * ((lm[i].x - 0.5) * di) / f, -((lm[i].y - 0.5) * ar * di) / f, -di];
+      }
       // lado da mão por votação (estável mesmo se o rótulo piscar)
       sl.vote = sl.vote * 0.85 + (det.effRight ? 0.15 : -0.15);
       const chir = sl.vote >= 0 ? 1 : -1;
