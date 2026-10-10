@@ -125,7 +125,7 @@ export default {
           env.uniforms.horizon.value.copy(c); env.hemi.intensity = 0.12 + dawn * 1.2;
         }
         const m = Math.floor(timeLeft / 60), s = Math.floor(timeLeft % 60);
-        ctx.hud(dawn > 0 ? 'O dia está nascendo…' : `Sinalizadores ${lit}/4 · amanhecer em ${m}:${String(s).padStart(2, '0')}`, 'Ilumine os sinalizadores · aponte para o chão para andar');
+        ctx.hud(dawn > 0 ? 'O dia está nascendo…' : `Sinalizadores ${lit}/4 · amanhecer em ${m}:${String(s).padStart(2, '0')}`, 'Ilumine os sinalizadores · feche a esquerda para andar');
       },
     };
   },

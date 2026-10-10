@@ -110,7 +110,7 @@ export default {
       b.position.set(-0.36 + i * 0.12, 0, 0); bar.add(b); typeBtns[t] = b;
     });
     const modeBtns = ['quebrar', 'colocar', 'andar'].map((m, i) => {
-      const b = ctx.button({ w: 0.15, h: 0.06, label: { quebrar: 'Quebrar', colocar: 'Colocar', andar: 'Andar' }[m], icon: { quebrar: 'pick', colocar: 'block', andar: 'walk' }[m], variant: 'glass', fontSize: 0.34, onClick: () => { mode = m; refresh(); } });
+      const b = ctx.button({ w: 0.15, h: 0.06, label: { quebrar: 'Quebrar', colocar: 'Colocar', andar: 'Teleporte' }[m], icon: { quebrar: 'pick', colocar: 'block', andar: 'walk' }[m], variant: 'glass', fontSize: 0.34, onClick: () => { mode = m; refresh(); } });
       b.position.set(-0.17 + i * 0.17, 0.075, 0); bar.add(b); return [m, b];
     });
     const refresh = () => {
@@ -184,7 +184,7 @@ export default {
           const n = h.face.normal;
           v.outline.visible = true; v.outline.position.set(b.x + 0.5, b.y + 0.5, b.z + 0.5);
           if (pp.main) mainHit = h.point;
-          const pointing = pp.source === 'hand' && pp.gesture === 'apontando';
+          const pointing = false; // Walking is controlled by the closed left hand, never by aiming at a block.
           if (pMode === 'andar' || pointing) {
             // teleporte para o topo do bloco (apontar 0,65s ou pinçar)
             if (n.y > 0.5 && !get(b.x, b.y + 1, b.z) && !get(b.x, b.y + 2, b.z)) {
@@ -215,7 +215,7 @@ export default {
             const ex = get(...p);
             const eye = ctx.eye();
             const inside = Math.floor(eye.x) === p[0] && Math.floor(eye.z) === p[2] && (p[1] === Math.floor(rig.position.y) || p[1] === Math.floor(rig.position.y) + 1);
-            if ((!ex || TYPES[ex.t].liquid) && !inside && p[1] >= 0 && p[1] < 30) {
+            if ((!ex || TYPES[ex.t].liquid) && !inside && p[0] >= 0 && p[0] < W && p[2] >= 0 && p[2] < W && p[1] >= 0 && p[1] < 30) {
               set(...p, current); rebuild();
               step(TYPES[current].step); audio.tone({ freq: 300, to: 200, dur: 0.05, vol: 0.08 });
             }
@@ -229,7 +229,7 @@ export default {
           if (o.t > 1.6) { o.d.scale.multiplyScalar(0.85); }
           if (o.t > 2.2) { o.d.removeFromParent(); o.d.geometry.dispose(); drops.splice(i, 1); }
         }
-        ctx.hud(twoHands ? `Direita coloca ${TYPES[current].label} · esquerda quebra` : `${{ quebrar: 'Quebrar', colocar: 'Colocar: ' + TYPES[current].label, andar: 'Andar' }[mode]}`, twoHands ? 'Aponte o indicador para um bloco para ir até ele' : mode === 'quebrar' ? 'Segure a pinça no bloco até soltar' : mode === 'colocar' ? 'Pinça/toque numa face para colocar' : 'Toque no topo de um bloco · aponte com o dedo');
+        ctx.hud(twoHands ? `Direita coloca ${TYPES[current].label} · esquerda quebra` : `${{ quebrar: 'Quebrar', colocar: 'Colocar: ' + TYPES[current].label, andar: 'Teleporte opcional' }[mode]}`, 'Andar: feche a esquerda ou a única mão. Abra para parar.');
       },
       dispose() { sun.castShadow = false; app.onTeleport = null; },
     };

@@ -63,6 +63,14 @@ try {
       app.env.update();
       app.renderer.render(app.scene, app.camera);
     }, game.id);
+    const pauseCheck = await page.evaluate(() => {
+      const app = window.__app, before = app.gameTime;
+      app.menu.toggle(true); app.perf.capFps = 0; app.loop(performance.now());
+      const paused = app.gameTime === before && app.gameplayBlocked;
+      app.menu.toggle(false); app.loop(performance.now() + 17);
+      return { paused, resumed: app.gameTime > before };
+    });
+    if (!pauseCheck.paused || !pauseCheck.resumed) throw new Error(`${game.id}: menu pause/resume failed`);
     const report = await page.evaluate(() => {
       const app = window.__app;
       app.renderer.render(app.scene, app.camera);
@@ -94,7 +102,7 @@ try {
       await page.screenshot({ path: path.join(folder, 'arena-root-only.png') });
       break;
     }
-    reports.push(report);
+    report.pauseCheck = pauseCheck; reports.push(report);
     console.log(`${game.id}: ${report.calls} calls, ${report.triangles} triangles, ${report.shaderErrors.length} shader failures`);
   }
   await writeFile(path.join(folder, 'report.json'), JSON.stringify({ renderer: 'headless Chromium / SwiftShader (not device FPS)', reports, errors }, null, 2));

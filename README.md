@@ -7,7 +7,13 @@
 - As mãos virtuais acompanham MediaPipe; selecionar, arrastar, tocar com indicador, gesto de palma para menu e recentralização seguem convenções próximas ao Meta. Webcam monocular não tem a precisão ou a profundidade dos sensores de um Quest. Use HTTPS, boa iluminação e mantenha as mãos no campo de visão da câmera traseira.
 - A barra universal tem **Jogos externos** e **Security**. Esses painéis usam toque na tela; configure antes de colocar os óculos. A simulação e as seleções da cena pausam enquanto o painel está aberto.
 - YouTube tem busca, catálogo e **Abrir link** (link HTTPS ou ID de vídeo). A reprodução é um painel 2D duplicado para os olhos no VR Box; não é projeção imersiva de vídeo 360°/180°. A referência TikTok indicada não pôde ser acessada; a interface é própria, sem alegação de cópia exata.
-- Ao escolher um vídeo, o player oficial incorporado abre dentro do site imediatamente, sem depender do carregamento da API de controles. No VR Box há um iframe por olho e apenas um com som. Se o navegador bloquear autoplay, toque em **Reproduzir / ativar som** ou no player. Vídeos privados, removidos ou com incorporação desativada pelo autor não podem ser reproduzidos aqui. Fechar remove os iframes e interrompe o som.
+- Ao escolher um vídeo, o player oficial incorporado aparece **dentro da janela flutuante**, com perspectiva e posição sincronizadas à janela em cada olho. A barra inferior permite arrastar por pinça; os botões virtuais controlam assistir/pausa, ±10 segundos, volume e parar. Minimizar esconde o player e permite voltar pelo dock. Não há camada de reprodução ocupando a tela inteira. No VR Box há um iframe por olho e apenas um com som. O navegador ainda pode exigir autorização de som por um toque real antes de colocar os óculos; a API não contorna essa regra. Vídeos privados, removidos ou com incorporação desativada pelo autor não podem ser reproduzidos aqui. Fechar remove os iframes e interrompe o som.
+
+### Caminhada e melhorias comuns aos 16 jogos
+
+Nos jogos com caminhada (Início, Selva, Arena, Reinos, Masmorra, Sobrevivência, Mundo de Blocos e topo da Escalada), feche a mão esquerda por 0,3 segundo para andar na direção horizontal do olhar, a 0,85 m/s. Abra para parar. Com uma mão só, ela assume essa função. Pinça, mão apontando, mão sobre UI e rastreamento de baixa confiança não são comandos de caminhada. Após abrir menus, perder a mão ou pausar, abra a mão antes de voltar a caminhar. Há verificação de caminho e margem lateral para reduzir atravessamento de obstáculos. Apontar para o chão não aciona teleporte por padrão; no Mundo de Blocos, **Teleporte** é uma ferramenta opcional selecionada na barra.
+
+Os 16 jogos usam pausa global para menus/janelas e um relógio de simulação que não avança durante a pausa. Arrastos de objetos são soltos ao pausar. O HUD tem reinício rápido (ícone de seta circular) e ajuda **?**; a ajuda inicial recolhe após 12 segundos. Recursos compartilhados são liberados uma vez, e fechar janelas libera suas geometrias e texturas. Não houve reescrita das 16 mecânicas: as melhorias são de interação, pausa, navegação e manutenção; a movimentação própria de corrida, natação e escalada continua específica a cada jogo.
 
 ### Compatibilidade dos jogos externos
 
@@ -87,7 +93,7 @@ Cada mão tem raio, cursor e clique próprios, e as duas podem usar menus e jogo
 | Encostar a ponta do indicador no botão | Toque direto (poke) |
 | Olhar a palma + pinçar | Abre/fecha o menu (barra universal + Biblioteca) |
 | Olhar a palma + pinçar e segurar 1s | Recentraliza a visão |
-| Apontar o indicador para o chão + pinçar | Teleporte (segurar apontando 0,65s também funciona) |
+| Fechar a mão esquerda (ou a única mão) | Caminhar na direção do olhar; abrir para parar |
 
 O raio parte sempre da ponta do indicador, inclusive com mão aberta ou durante a pinça. A direção segue a linha do olho até essa ponta. A linha visual usa a mesma origem e direção do raio de seleção. O anel do cursor se fecha conforme a força da pinça. O clique por tempo (0,65s) só vale para quem usa o olhar no papelão, sem câmera.
 

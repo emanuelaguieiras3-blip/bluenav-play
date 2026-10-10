@@ -49,6 +49,20 @@ try {
   await page.evaluate(() => window.__app.openExternalApps());
   await page.getByRole('button', { name: 'Jogar Mundo de Blocos no VR Box' }).click();
   await page.waitForFunction(() => window.__app.gameId === 'blocks' && !window.__app.loading);
+  const walking = await page.evaluate(() => {
+    const app = window.__app, THREE = app.ctx.THREE; app.renderer.setAnimationLoop(null); app.walkIntent.reset();
+    const points = Array.from({ length: 21 }, () => new THREE.Vector3(0, .06, 0));
+    points[0].set(0,0,0); points[9].y = .09;
+    for (const tip of [8,12,16,20]) { points[tip].y = .045; points[tip - 2].y = .07; }
+    const pointer = { id: 'walk-test', source: 'hand', side: 'left', hand: { points, confianca: .9 } };
+    app.input.pointers = [pointer]; const before = app.rig.position.clone();
+    for (let frame = 0; frame < 40; frame++) { app.camera.updateMatrixWorld(true); app._walk(1/60); }
+    const moved = app.rig.position.distanceTo(before);
+    points[8].y = .17; const stop = app.rig.position.clone();
+    for (let frame = 0; frame < 20; frame++) app._walk(1/60);
+    return { moved, stopped: app.rig.position.distanceTo(stop) === 0 };
+  });
+  assert.ok(walking.moved > .1); assert.equal(walking.stopped, true);
   await page.screenshot({ path: 'artifacts/vrbox/blocks.png' });
-  assert.deepEqual(errors, []); console.log('VR Box flow passed: local WAV, pause/resume, 4 apps, security (mock API), blocks, no runtime errors.');
+  assert.deepEqual(errors, []); console.log('VR Box flow passed: WAV, pause/resume, external apps, security, blocks, fist walking and immediate stop.');
 } finally { await browser.close(); }

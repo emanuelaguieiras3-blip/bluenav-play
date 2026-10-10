@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { roundRect, fitText } from '../core/textures.js';
 import { makeButton } from './widgets.js';
 import { T } from './theme.js';
-import { clamp, DEG } from '../core/util.js';
+import { clamp, DEG, disposeTree } from '../core/util.js';
 
 const MAX_OPEN = 3;
 const RADIUS = 1.45;
@@ -29,7 +29,7 @@ class Win {
     this.src = document.createElement('canvas'); this.src.width = this.cw; this.src.height = this.ch;
     this.view = document.createElement('canvas'); this.view.width = this.cw; this.view.height = this.ch;
     this.tex = new THREE.CanvasTexture(this.view); this.tex.colorSpace = THREE.SRGBColorSpace; this.tex.anisotropy = 4;
-    this.mat = new THREE.MeshBasicMaterial({ map: this.tex, transparent: true, depthWrite: false, side: THREE.DoubleSide });
+    this.mat = new THREE.MeshBasicMaterial({ map: this.tex, transparent: true, depthTest: false, depthWrite: false, side: THREE.DoubleSide });
     this.panel = new THREE.Mesh(new THREE.PlaneGeometry(w, h), this.mat);
     this.group.add(this.panel);
 
@@ -151,7 +151,7 @@ class Win {
     ui.remove(this.btnClose.userData.body); ui.remove(this.btnMin.userData.body);
     this.content.dispose?.(this);
     this.group.removeFromParent();
-    this.tex.dispose(); this.mat.dispose();
+    disposeTree(this.group);
   }
 }
 

@@ -28,12 +28,14 @@ export const safeStorage = {
 
 // Libera geometrias, materiais e texturas de uma árvore de objetos
 export function disposeTree(obj, keep = new Set()) {
+  const seen = new Set();
   obj.traverse((o) => {
-    if (o.geometry && !keep.has(o.geometry)) o.geometry.dispose();
+    if (o.geometry && !keep.has(o.geometry) && !seen.has(o.geometry)) { seen.add(o.geometry); o.geometry.dispose(); }
     const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
     for (const m of mats) {
-      if (keep.has(m)) continue;
-      for (const k in m) { const v = m[k]; if (v && v.isTexture && !keep.has(v) && !v.userData.shared) v.dispose(); }
+      if (keep.has(m) || seen.has(m)) continue;
+      seen.add(m);
+      for (const k in m) { const v = m[k]; if (v && v.isTexture && !keep.has(v) && !v.userData.shared && !seen.has(v)) { seen.add(v); v.dispose(); } }
       m.dispose();
     }
   });

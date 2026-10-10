@@ -82,16 +82,17 @@ export class Teleport {
     this.shade.visible = this.fade > 0.001;
 
     this.arc.visible = false;
-    if (!this.enabled || uiBusy) { this.marker.visible = false; this.t = 0; return; }
+    if (!this.enabled || uiBusy) { this.marker.visible = false; this.t = 0; this.aimT = -1; return; }
     // qualquer mão pode apontar para teleportar (a outra fica livre)
     const ptrs = input.pointers || [];
-    const aimP = ptrs.find((q) => q.source === 'hand' && q.gesture === 'apontando' && !q.uiBusy && !q.system);
+    const keys = input.keys;
+    const aimP = this.app.usePointTeleport ? ptrs.find((q) => q.source === 'hand' && q.gesture === 'apontando' && !q.uiBusy && !q.system) : null;
     if (aimP) input = aimP;
     const pointing = !!aimP;
     // Quest: aponte para mirar e "estale" polegar no indicador (pinça) para ir
     const snap = ptrs.find((q) => q.source === 'hand' && q.pinchDown && (!this.aimId || q.id === this.aimId));
     if (snap && performance.now() - this.aimT < 350) { this.go(this.spot); this.aimT = -1; this.marker.visible = false; return; }
-    const keyPoint = input.keys.has('ShiftLeft') || input.keys.has('ShiftRight');
+    const keyPoint = keys?.has('ShiftLeft') || keys?.has('ShiftRight');
     const hit = (pointing || keyPoint || input.source === 'gaze' || input.source === 'mouse' || input.source === 'xr') ? this.floorHit(input.ray) : null;
     if (!hit) { this.marker.visible = false; this.t = 0; return; }
     if (pointing || keyPoint) {

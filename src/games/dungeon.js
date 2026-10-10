@@ -109,7 +109,7 @@ export default {
           r.mat.emissiveIntensity += ((r.done ? 1.6 : glow * 1.2) - r.mat.emissiveIntensity) * Math.min(1, dt * 5);
           if (!r.done && d < 0.9) { r.lit += dt; if (r.lit > 0.65) { r.done = true; found++; audio.success(); } } else if (!r.done) r.lit = 0;
         }
-        ctx.hud(`Runas acesas ${found}/${runes.length}`, found === runes.length ? 'Você revelou todos os segredos da masmorra!' : 'Aproxime a tocha das inscrições · aponte para o chão para andar');
+        ctx.hud(`Runas acesas ${found}/${runes.length}`, found === runes.length ? 'Você revelou todos os segredos da masmorra!' : 'Aproxime a tocha das inscrições · feche a esquerda para andar');
       },
     };
   },

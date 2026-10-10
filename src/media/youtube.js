@@ -6,6 +6,8 @@ import { safeStorage } from '../core/util.js';
 import { wrapText, fitText, roundRect } from '../core/textures.js';
 import { T, drawIcon } from '../ui/theme.js';
 import { youtubeId } from './youtubeUrl.js';
+import * as THREE from 'three';
+import { quadTransform, videoRect } from './windowProjection.js';
 
 const API = 'https://www.googleapis.com/youtube/v3';
 
@@ -63,25 +65,28 @@ export class VideoLayer {
     this.slots = document.getElementById('video-slots');
     this.players = [];
     this.volume = 1;
+    this.focusVolume = 1;
     this.current = null;
+    this.window = null;
     this.revision = 0;
     this.status = document.getElementById('video-status');
     document.getElementById('video-resume').addEventListener('click', () => this.resume());
     document.getElementById('video-close').addEventListener('click', () => this.close());
   }
 
-  async play(video) {
+  async play(video, win = this.app.wm.get('yt-player')) {
     this.close();
     const id = youtubeId(video.id);
     if (!id) return;
     const revision = this.revision;
     this.current = video;
+    this.window = win;
     this.el.hidden = false;
     this.app.menu?.toggle(false);
     const stereo = this.app.mode === 'cardboard';
     this.slots.className = stereo ? 'stereo' : 'flat';
     this.quality = pickQuality();
-    this.status.textContent = 'Carregando vídeo. Se não iniciar, toque em Reproduzir ou no player.';
+    this.status.textContent = 'Carregando vídeo…';
     // Embed immediately: playback must not depend on the optional control SDK.
     const frames = Array.from({ length: stereo ? 2 : 1 }, (_, eye) => {
       const slot = document.createElement('div'), frame = document.createElement('iframe');
@@ -101,12 +106,12 @@ export class VideoLayer {
       this.players = frames.map((frame, eye) => new window.YT.Player(frame, { events: {
         onReady: event => {
           if (revision !== this.revision) return;
-          try { if (eye) event.target.mute(); else event.target.setVolume(Math.round(this.volume * 100)); event.target.playVideo(); } catch {}
+          try { if (eye) event.target.mute(); else event.target.setVolume(Math.round(this.volume * this.focusVolume * 100)); event.target.playVideo(); } catch {}
         },
         onStateChange: event => {
-          if (revision === this.revision && !eye && event.data === 1) this.status.textContent = '';
+          if (revision === this.revision && !eye && event.data === 1) { this.status.textContent = ''; this.window?.invalidate(); }
         },
-        onAutoplayBlocked: () => { if (revision === this.revision) this.status.textContent = 'Toque em Reproduzir para autorizar vídeo e som.'; },
+        onAutoplayBlocked: () => { if (revision === this.revision) { this.status.textContent = 'Som bloqueado: autorize uma vez com toque antes de colocar os óculos. Tente Assistir na janela.'; this.window?.invalidate(); } },
         onError: event => {
           if (revision !== this.revision) return;
           const errors = { 100: 'Vídeo removido ou privado.', 101: 'O autor não permite reproduzir este vídeo em outros sites.',
@@ -115,7 +120,7 @@ export class VideoLayer {
         },
       } }));
     } catch {
-      if (revision === this.revision) this.status.textContent = 'Use os controles do próprio vídeo. Os controles adicionais não carregaram.';
+      if (revision === this.revision) this.status.textContent = 'Controles do YouTube não carregaram. Pare o vídeo e tente Assistir novamente.';
       return;
     }
     if (stereo && revision === this.revision) {
@@ -128,18 +133,44 @@ export class VideoLayer {
 
   resume() {
     for (const [eye, player] of this.players.entries()) {
-      try { if (!eye) { player.unMute(); player.setVolume(Math.round(this.volume * 100)); } else player.mute(); player.playVideo(); } catch {}
+      try { if (!eye) { player.unMute(); player.setVolume(Math.round(this.volume * this.focusVolume * 100)); } else player.mute(); player.playVideo(); } catch {}
     }
   }
 
-  setVolume(v) { this.volume = v; try { this.players[0]?.setVolume(Math.round(v * 100)); } catch { /* ok */ } }
-  togglePause() { const p = this.players[0]; if (!p) return; try { p.getPlayerState() === 1 ? p.pauseVideo() : p.playVideo(); } catch { /* ok */ } }
+  setVolume(v) { this.volume = Math.max(0, Math.min(1, v)); this.applyVolume(); }
+  setFocusVolume(v) { this.focusVolume = v; this.applyVolume(); }
+  applyVolume() { try { this.players[0]?.setVolume(Math.round(this.volume * this.focusVolume * 100)); } catch {} }
+  togglePause() { const p = this.players[0]; if (!p) return; try { const playing = p.getPlayerState() === 1; this.players.forEach(player => playing ? player.pauseVideo() : player.playVideo()); } catch {} }
+  seek(seconds) { try { const at = Math.max(0, this.players[0].getCurrentTime() + seconds); this.players.forEach(player => player.seekTo(at, true)); } catch {} }
+
+  updateProjection() {
+    const win = this.window;
+    if (this.el.hidden || !win) return;
+    const visible = !win.minimized && win.group.visible && !this.app.renderer.xr.isPresenting;
+    const rect = videoRect(win.cw, win.ch), stereo = this.app.mode === 'cardboard';
+    const cameras = stereo ? [this.app.stereo.stereo.cameraL, this.app.stereo.stereo.cameraR] : [this.app.camera];
+    const width = window.innerWidth / cameras.length, height = window.innerHeight;
+    const local = [[rect.x, rect.y], [rect.x + rect.w, rect.y], [rect.x + rect.w, rect.y + rect.h], [rect.x, rect.y + rect.h]];
+    [...this.slots.children].forEach((slot, eye) => {
+      const frame = slot.querySelector('iframe'), camera = cameras[eye];
+      if (!frame || !camera || !visible) { slot.style.visibility = 'hidden'; return; }
+      const points = local.map(([x, y]) => new THREE.Vector3((x / win.cw - 0.5) * win.w, (0.5 - y / win.ch) * win.h, 0.006).applyMatrix4(win.panel.matrixWorld));
+      if (points.some(point => point.clone().applyMatrix4(camera.matrixWorldInverse).z >= -camera.near)) { slot.style.visibility = 'hidden'; return; }
+      const projected = points.map(point => { point.project(camera); return [(point.x + 1) * width / 2, (1 - point.y) * height / 2]; });
+      const matrix = quadTransform(rect.w, rect.h, projected);
+      slot.style.visibility = matrix ? 'visible' : 'hidden';
+      if (!matrix) return;
+      frame.style.width = `${rect.w}px`; frame.style.height = `${rect.h}px`;
+      frame.style.transform = `matrix3d(${matrix.join(',')})`;
+    });
+  }
 
   close() {
     this.revision++;
+    this.window?.invalidate(); this.status.textContent = '';
     clearInterval(this.sync);
     for (const p of this.players) try { p.destroy(); } catch { /* ok */ }
-    this.players = []; this.slots.innerHTML = ''; this.el.hidden = true; this.current = null;
+    this.players = []; this.slots.innerHTML = ''; this.el.hidden = true; this.current = null; this.window = null;
   }
 }
 
@@ -264,27 +295,34 @@ export class PlayerContent {
   constructor(app, video) { this.app = app; this.video = video; this.icon = 'Vídeo'; this.glyph = 'play'; this.img = null; }
   attach(win) {
     this.win = win;
+    if (!this.app.renderer.xr.isPresenting) this.app.video.play(this.video, win);
     const img = new Image(); img.crossOrigin = 'anonymous';
     img.onload = () => { this.img = img; win.invalidate(); };
     img.src = this.video.thumb || '';
   }
   draw(x, W, H, win) {
-    const th = H - 250;
-    x.save(); roundRect(x, 30, 100, W - 60, th, 18); x.clip();
-    if (this.img) { const s = Math.max((W - 60) / this.img.width, th / this.img.height); x.globalAlpha = 0.85; x.drawImage(this.img, W / 2 - this.img.width * s / 2, 100 + th / 2 - this.img.height * s / 2, this.img.width * s, this.img.height * s); x.globalAlpha = 1; }
-    else { x.fillStyle = T.surface; x.fillRect(30, 100, W - 60, th); }
+    const rect = videoRect(W, H), th = rect.h;
+    x.save(); roundRect(x, 30, 92, W - 60, th, 18); x.clip();
+    if (this.img && this.app.video.el.hidden) { const s = Math.max((W - 60) / this.img.width, th / this.img.height); x.drawImage(this.img, W / 2 - this.img.width * s / 2, 92 + th / 2 - this.img.height * s / 2, this.img.width * s, this.img.height * s); }
+    else { x.fillStyle = T.surface; x.fillRect(30, 92, W - 60, th); }
     x.restore();
-    x.fillStyle = T.text; x.font = `600 30px ${T.font}`; x.textAlign = 'left'; wrapText(x, this.video.title, 36, 100 + th + 36, W - 72, 34, 1);
-    const q = this.app.video.quality?.label || 'auto';
+    x.fillStyle = T.text; x.font = `600 22px ${T.font}`; x.textAlign = 'left';
+    fitText(x, this.app.video.status.textContent || 'Pince os controles · arraste a barra para mover a janela', 36, 92 + th + 26, W - 72);
     const xr = this.app.renderer.xr.isPresenting;
     x.fillStyle = T.textDim; x.font = `500 22px ${T.font}`;
-    fitText(x, xr ? 'No modo imersivo o YouTube não aparece dentro da cena: saia do VR para assistir.' : `Qualidade adaptativa: ${q} · Painel 2D em tela dividida no VR Box`, 36, 100 + th + 76, W - 72);
-    const bw = 230, by = H - 74;
+    if (xr) fitText(x, 'YouTube incorporado disponível no VR Box e em tela normal.', 36, 92 + th + 56, W - 72);
+    const bw = 150, by = H - 118;
     const btn = (label, bx, fn, key, light) => { x.fillStyle = light ? T.surfaceActive : T.surface; roundRect(x, bx, by, bw, 54, 27); x.fill(); x.fillStyle = light ? T.textOnLight : T.text; x.textAlign = 'center'; x.font = `600 26px ${T.font}`; x.fillText(label, bx + bw / 2, by + 28); win.items.push({ x: bx, y: by, w: bw, h: 54, r: 27, key, onClick: fn }); };
-    btn('Assistir', W / 2 - bw * 1.5 - 20, () => this.app.video.play(this.video), 'play', true);
-    btn('Pausar', W / 2 - bw / 2, () => this.app.video.togglePause(), 'pause');
-    btn('Parar', W / 2 + bw / 2 + 20, () => this.app.video.close(), 'stop');
+    btn('Assistir', 34, () => this.app.video.el.hidden ? this.app.video.play(this.video, win) : this.app.video.resume(), 'play', true);
+    btn('Pausa', 194, () => this.app.video.togglePause(), 'pause');
+    btn('−10 s', 354, () => this.app.video.seek(-10), 'back');
+    btn('+10 s', 514, () => this.app.video.seek(10), 'forward');
+    btn('Volume −', 674, () => this.app.video.setVolume(Math.max(0, this.app.video.volume - .15)), 'volume-down');
+    btn('Volume +', 834, () => this.app.video.setVolume(Math.min(1, this.app.video.volume + .15)), 'volume-up');
+    const stop = { x: 34, y: H - 52, w: W - 68, h: 40, key: 'stop', onClick: () => this.app.video.close() };
+    x.fillStyle = T.textDim; x.font = `500 22px ${T.font}`; x.textAlign = 'center'; x.fillText('Parar vídeo', W / 2, stop.y + 22); win.items.push(stop);
   }
-  setVolume(v) { this.app.video.setVolume(v); }
+  update(dt, win) { this.elapsed = (this.elapsed || 0) + dt; if (this.elapsed > .5) { this.elapsed = 0; win.invalidate(); } }
+  setVolume(v) { this.app.video.setFocusVolume(v); }
   dispose() { this.app.video.close(); }
 }

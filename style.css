@@ -83,6 +83,17 @@ button:active { transform: scale(0.98); }
 #video-status { margin: 0 16px 12px; min-height: 1.5em; font-size: 13px; text-align: center; color: #d4deee; }
 #video-slots.stereo > div { display: flex; align-items: center; padding: 4% 3%; }
 #video-slots.stereo iframe { height: auto; aspect-ratio: 16 / 9; border-radius: 14px; }
+/* Official iframes are projected over their 3D window, separately for each eye. */
+#video-layer, #video-layer.pt { background: transparent; pointer-events: none; display: block; }
+#video-slots { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+#video-slots.flat > div, #video-slots.stereo > div, #video-layer.pt #video-slots.stereo > div {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%; padding: 0;
+  overflow: hidden; border-radius: 0; aspect-ratio: auto; display: block; visibility: hidden;
+}
+#video-slots.stereo > div { width: 50%; }
+#video-slots.stereo > div:nth-child(2) { left: 50%; }
+#video-slots iframe, #video-slots.stereo iframe { position: absolute; top: 0; left: 0; transform-origin: 0 0; border-radius: 12px; pointer-events: none; }
+#video-controls, #video-status { display: none; }
 /* passthrough ativo: o vídeo flutua sobre o mundo real (a câmera aparece em volta) */
 #video-layer.pt { background: transparent; }
 #video-layer.pt #video-slots.stereo > div { padding: 9% 7%; }

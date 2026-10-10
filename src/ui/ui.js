@@ -89,7 +89,7 @@ export class UI {
   }
 
   update(dt, input) {
-    const vis = this.targets.filter((m) => this._visible(m));
+    const vis = this.targets.filter((m) => this._visible(m) && !(this.app.gameplayBlocked && m.userData.ui?.owner === 'game'));
     for (const s of this.states.values()) s.seen = false;
     let anyHover = false, anyDrag = null;
     for (const p of input.pointers || []) {
@@ -278,6 +278,13 @@ export class UI {
   // encerra um arrasto pelo lado do jogo (ex.: peça que encaixou sozinha)
   cancelDrag(drag) {
     for (const s of this.states.values()) if (s.drag === drag) { s.drag = null; s.dragMesh = null; }
+  }
+  cancelOwner(owner) {
+    for (const state of this.states.values()) {
+      if (state.dragMesh?.userData.ui?.owner === owner) { state.drag?.end?.(state.lastP); state.drag = null; state.dragMesh = null; }
+      if (state.press?.mesh?.userData.ui?.owner === owner) state.press = null;
+      if (state.hoverMesh?.userData.ui?.owner === owner) this._clearHover(state);
+    }
   }
 
   _fire(s, sub, mesh) {

@@ -21,6 +21,7 @@ import { HAND_CONTROLS } from './games/handControls.js';
 import { createGameGraphics } from './games/graphics.js';
 import { createExternalApps } from './media/externalApps.js';
 import { createSecurityPanel } from './security/securityAssist.js';
+import { WalkIntent, walkStep } from './core/locomotion.js';
 
 // Barra que acompanha o corpo devagar (embaixo da visão): início, menu e placar
 class HudBar {
@@ -46,9 +47,11 @@ class HudBar {
     this.guideTip.position.set(0, -0.07, 0.003);
     this.guide.add(guideBg, this.guideTitle, this.guideAction, this.guideTip);
     this.guide.position.y = 0.18;
-    const help = makeButton(app, { w: 0.055, h: 0.055, label: '?', variant: 'accent', round: true, onClick: () => { this.guide.visible = !this.guide.visible; } });
+    const help = makeButton(app, { w: 0.055, h: 0.055, label: '?', variant: 'accent', round: true, onClick: () => { this.guide.visible = !this.guide.visible; this.guideTime = 0; } });
     help.position.set(0.35, 0, 0.003);
     this.group.add(this.guide, help);
+    const restart = makeButton(app, { w: .055, h: .055, icon: 'recenter', variant: 'ghost', round: true, onClick: () => app.loadGame(app.gameId) });
+    restart.position.set(.425, 0, .003); this.group.add(restart);
     this.yaw = 0;
     this.pitch = -34 * DEG; this.dist = 0.85;
   }
@@ -57,8 +60,9 @@ class HudBar {
     this.pendingText = text;
     this.instruction = sub;
   }
-  controls(id) { this.controlId = id; this.guide.visible = !!HAND_CONTROLS[id]; }
+  controls(id) { this.controlId = id; this.guide.visible = !!HAND_CONTROLS[id]; this.guideTime = 12; }
   update(dt) {
+    if (this.guideTime > 0) { this.guideTime -= dt; if (this.guideTime <= 0) this.guide.visible = false; }
     this.textTime = (this.textTime || 0) - dt;
     if (this.pendingText !== undefined && this.textTime <= 0) {
       this.label.userData.set(this.pendingText); this.pendingText = undefined; this.textTime = 0.12;
@@ -72,7 +76,7 @@ class HudBar {
       this.guideTitle.userData.set(state);
       const controls = HAND_CONTROLS[this.controlId];
       this.guideAction.userData.set(controls?.[hands.length >= 2 ? 1 : 0] || '');
-      this.guideTip.userData.set(this.instruction || (hands.length ? 'Botões: toque com indicador ou pince e solte.' : 'Ative as mãos para jogar com gestos.'));
+      this.guideTip.userData.set(this.app.walk ? 'Andar: feche a esquerda (ou a única mão). Abra para parar.' : this.instruction || (hands.length ? 'Botões: toque com indicador ou pince e solte.' : 'Ative as mãos para jogar com gestos.'));
     }
     const c = this.app.camera.position, hy = this.app.headYaw();
     this.yaw += angDiff(hy, this.yaw) * Math.min(1, dt * 1.2);
@@ -154,6 +158,8 @@ export class App {
     this.passthrough = new Passthrough(this);
     this.hands = null;
     this.walk = false;
+    this.walkIntent = new WalkIntent();
+    this.gameTime = 0;
     this.externalApps = createExternalApps(this);
     this.securityPanel = createSecurityPanel(this);
 
@@ -247,7 +253,7 @@ export class App {
       lookDown: (pitch = -0.35) => { if (!this.orientation.active) this.look.pitch = pitch; },
       teleport: (o) => { this.teleport.configure(o); this.walk = !!o?.walk; },
       uiBusy: (p) => (p ? !!p.uiBusy : this.ui.hovering || !!this.ui.drag),
-      pointers: () => (this.input.pointers || []).filter((q) => !q.system && !q.stale && !q.uiBusy),
+      pointers: () => (this.input.pointers || []).filter((q) => !q.system && !q.stale && !q.uiBusy && !q.locomotion),
       setPointerHit: (p) => { this.pointerHit = p ? (this._ph || (this._ph = new THREE.Vector3())).copy(p) : null; },
       onDispose: (fn) => disposers.push(fn),
       _disposers: disposers,
@@ -259,11 +265,13 @@ export class App {
   async loadGame(id) {
     if (this.loading) return;
     this.loading = true;
+    this.walkIntent.reset(); this.gameTime = 0;
     this.menu.toggle(false); this.keyboard.hide();
     // tela escurecida enquanto carrega (esconde a montagem e a geração de texturas)
     this.teleport.fade = 1; this.teleport.fadeDir = 0; this.teleport.shade.visible = true; this.teleport.shade.material.opacity = 1;
     try {
       if (this.game) { try { this.game.dispose?.(); } catch (e) { console.warn(e); } this.ctx?._disposers.forEach((f) => f()); }
+      this.onTeleport = null;
       this.game = null; // o jogo antigo não pode mais rodar enquanto o novo carrega
       this.graphics = null;
       this.ui.removeWhere((m) => m.userData.ui?.owner === 'game');
@@ -318,8 +326,7 @@ export class App {
   playVideo(video) {
     const old = this.wm.get('yt-player');
     if (old) this.wm.close(old);
-    this.wm.open({ id: 'yt-player', title: '▶ ' + video.title, w: 1.0, h: 0.62, content: new PlayerContent(this, video) });
-    if (!this.renderer.xr.isPresenting) this.video.play(video);
+    this.wm.open({ id: 'yt-player', title: '▶ ' + video.title, w: 1.18, h: .94, content: new PlayerContent(this, video) });
   }
 
   _look(dt) {
@@ -335,16 +342,23 @@ export class App {
   }
 
   _walk(dt) {
-    if (!this.walk) return;
+    const pointers = this.input.pointers || [];
+    pointers.forEach(p => p.locomotion = false);
+    if (!this.walk) { this.walkIntent.reset(true); return; }
+    const intent = this.walkIntent.update(dt, pointers, true);
+    if (intent) { const hand = pointers.find(p => p.id === this.walkIntent.id); if (hand) hand.locomotion = true; }
     const k = this.input.keys;
-    const f = (k.has('KeyW') ? 1 : 0) - (k.has('KeyS') ? 1 : 0), s = (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0);
+    const f = intent || (k.has('KeyW') ? 1 : 0) - (k.has('KeyS') ? 1 : 0), s = (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0);
     if (!f && !s) return;
-    const yaw = this.headYaw() + this.rig.rotation.y, sp = 1.6 * dt;
+    const yaw = this.headYaw() + this.rig.rotation.y, sp = (intent ? .85 : 1.6) * dt / Math.max(1, Math.hypot(f, s));
     const dx = (-Math.sin(yaw) * f + Math.cos(yaw) * s) * sp, dz = (-Math.cos(yaw) * f - Math.sin(yaw) * s) * sp;
-    const nx = this.rig.position.x + dx, nz = this.rig.position.z + dz;
     const check = this.teleport.check;
-    const p = new THREE.Vector3(nx + this.camera.position.x, this.teleport.floorY, nz + this.camera.position.z);
-    if (!check || check(p)) { this.rig.position.x = nx; this.rig.position.z = nz; this.game?.onWalk?.(dt); }
+    const p = new THREE.Vector3(), eye = this.camera.getWorldPosition(new THREE.Vector3());
+    const allowed = (x, z) => !check || [[0, 0], [.16, 0], [-.16, 0], [0, .16], [0, -.16]].every(([ox, oz]) => check(p.set(x + ox, this.teleport.floorY, z + oz)));
+    const next = walkStep(eye.x, eye.z, dx, dz, allowed);
+    if (next.x !== eye.x || next.z !== eye.z) {
+      this.rig.position.x += next.x - eye.x; this.rig.position.z += next.z - eye.z; this.game?.onWalk?.(dt);
+    }
   }
 
   loop(t) {
@@ -358,14 +372,17 @@ export class App {
     this.input.update(dt);
     if (this.input.consumeMenuRequest()) this.menu.toggle();
     if (this.input.consumeRecenter()) { this.recenter(); this.audio.success(); }
-    const screenOverlay = !!this.screenDialog?.open || !!this.musicPickerOpen || !this.video.el.hidden;
-    if (!screenOverlay) this._walk(dt);
+    const screenOverlay = !!this.screenDialog?.open || !!this.musicPickerOpen;
+    this.gameplayBlocked = this.loading || screenOverlay || this.menu.open || document.hidden || this.wm.wins.some(w => !w.minimized);
     if (!screenOverlay) this.ui.update(dt, this.input);
     const trackingLost = !!this.hands?.running && !this.input.hands.some((h) => !h.stale && h.confianca >= 0.3);
-    const paused = this.loading || trackingLost || screenOverlay || (this.passthrough.covering && this.gameId !== 'lobby');
+    const paused = this.loading || trackingLost || screenOverlay || this.menu.open || document.hidden || this.wm.wins.some(w => !w.minimized) || (this.passthrough.covering && this.gameId !== 'lobby');
+    if (paused && !this._wasPaused) this.ui.cancelOwner('game');
+    this._wasPaused = paused; this.gameplayBlocked = paused;
+    if (!paused) this._walk(dt); else { this.walkIntent.reset(true); this.input.pointers.forEach(p => p.locomotion = false); }
     this.game?.setPaused?.(paused || this.menu.open || document.hidden);
     this.teleport.update(dt, this.input, paused || this.menu.open || (this.input.source !== 'hand' && (this.ui.hovering || !!this.ui.drag)));
-    if (!paused) { try { this.game?.update?.(dt, t / 1000, this.input); } catch (e) { console.error(e); this.game = null; } }
+    if (!paused) { this.gameTime += dt; try { this.game?.update?.(dt, this.gameTime, this.input); } catch (e) { console.error(e); this.game = null; } }
     if (!paused) this.graphics?.update(dt);
     this.handView.update(this.input);
     this.wm.update(dt);
@@ -377,6 +394,7 @@ export class App {
     this.perf.update(frameDt);
     if (this.mode === 'cardboard' && !this.renderer.xr.isPresenting) this.stereo.render(this.scene, this.camera);
     else this.renderer.render(this.scene, this.camera);
+    this.video.updateProjection();
     if (this.debug) this._debug();
   }
 
