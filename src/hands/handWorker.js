@@ -34,10 +34,9 @@ self.onmessage = async (e) => {
     const t0 = performance.now();
     let res = null;
     try { res = landmarker.detectForVideo(m.bitmap, m.t); } catch { /* quadro perdido */ }
-    m.bitmap.close();
     self.postMessage({
-      type: 'result', t: m.t, ms: performance.now() - t0,
+      type: 'result', bitmap: m.bitmap, t: m.t, ms: performance.now() - t0,
       res: res && { landmarks: res.landmarks, worldLandmarks: res.worldLandmarks, handednesses: res.handednesses || res.handedness },
-    });
+    }, [m.bitmap]);
   }
 };

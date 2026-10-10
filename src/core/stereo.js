@@ -9,8 +9,11 @@ export class StereoRenderer {
     this._size = new THREE.Vector2();
   }
 
-  render(scene, camera) {
+  render(scene, camera, monocular = false) {
     const r = this.renderer;
+    // One phone camera supplies one viewpoint. A fake IPD moves the overlay
+    // relative to that image by centimetres at hand distance.
+    this.stereo.eyeSep = monocular ? 0 : 0.064;
     scene.updateMatrixWorld();
     if (camera.parent === null) camera.updateMatrixWorld();
     this.stereo.update(camera);

@@ -107,11 +107,11 @@ export class Input {
       for (const h of tracker.hands) {
         const key = h.id ?? h.label; seen.add(key);
         let sm = disp.get(key);
-        if (!sm || sm.age > 0.2) { sm = { p: h.pontos.map((q) => q.slice()), age: 0 }; disp.set(key, sm); }
+        if (h.imageAligned || !sm || sm.age > 0.2) { sm = { p: (tracker.displayPoints?.(h) || h.pontos).map((q) => q.slice()), age: 0 }; disp.set(key, sm); }
         else for (let i = 0; i < 21; i++) for (let c = 0; c < 3; c++) sm.p[i][c] += (h.pontos[i][c] - sm.p[i][c]) * k;
         // Interpolar juntas independentemente encurta dedos durante uma dobra.
         // Reprojeta cada segmento na medida corrigida, preservando a palma.
-        for (const chain of [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16], [17, 18, 19, 20]]) {
+        for (const chain of h.imageAligned ? [] : [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16], [17, 18, 19, 20]]) {
           for (let j = 1; j < chain.length; j++) {
             const a = chain[j - 1], b = chain[j];
             const target = h.pontos[b].map((v, c) => v - h.pontos[a][c]);
@@ -159,17 +159,17 @@ export class Input {
         // lado: pela posição em relação à cabeça, com folga para não ficar trocando
         const lx = h.palm.clone().sub(eye).applyQuaternion(invQ).x;
         p.side = h.label === 'Right' ? 'right' : h.label === 'Left' ? 'left' : (p.side || (lx >= 0 ? 'right' : 'left'));
-        // indicador esticado e os outros dobrados (instantâneo, sem esperar 0,4s):
-        // o alvo é o que está "embaixo" da ponta do dedo, visto do olho — leve o dedo ao botão
+        // Indicador esticado: a linha segue a base e a ponta do dedo.
         const P = h.points, W = P[0], dw = (i) => P[i].distanceTo(W);
         const ri = dw(8) / Math.max(0.001, dw(6)), rm = dw(12) / Math.max(0.001, dw(10)), rr = dw(16) / Math.max(0.001, dw(14));
         // Pinçar após apontar mantém o modo de mira; trocar para o ombro no
         // meio do clique fazia o alvo escapar sem o usuário mover a mão.
         p.fingerAim = h.gesture === 'pinça' ? !!p.fingerAim : (h.gesture === 'apontando' || (ri > 1.3 && rm < 1.2 && rr < 1.2 && ri - Math.max(rm, rr) > 0.2));
-        // Every hand gesture uses the index tip as origin. Display interpolation
-        // already smooths the tip; a second ray filter would misalign selection.
+        // The ray and visible fingertip share exactly the same origin.
         p.ray.origin.copy(P[8]); p.origin.copy(P[8]);
-        p.ray.direction.copy(P[8]).sub(eye).normalize();
+        if (!(h.gesture === 'pinça' && p.fingerAim)) {
+          p.ray.direction.copy(P[8]).sub(p.fingerAim ? P[5] : eye).normalize();
+        }
         p.rayDir.copy(p.ray.direction);
         p.tipDepth = P[8].distanceTo(eye);
         p.handPos.copy(h.points[4]).lerp(h.points[8], 0.5);

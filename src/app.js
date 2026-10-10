@@ -227,6 +227,7 @@ export class App {
         const { HandTracker } = await import('./hands/handTracker.js');
         this.hands = new HandTracker();
         this.hands.hfovProvider = () => this.passthrough.displayHFOV; // mão virtual em cima da mão real
+        this.hands.onFrame = (frame) => this.passthrough.presentFrame(frame);
         this.hands.gemini.enabled = gemini;
         if (gemini) this.hands.gemini.status = 'aguardando mão';
         await this.hands.start({ facing: mode === 'cardboard' ? 'environment' : 'user', onStatus });
@@ -367,6 +368,7 @@ export class App {
     const dt = Math.min(0.05, frameDt);
     const now = performance.now();
     if (!this.renderer.xr.isPresenting) this._look(dt);
+    if (this.passthrough.mesh) this.passthrough._fit();
     if (this.hands) this.hands.update(now);
     this.camera.updateMatrixWorld(true);
     this.input.update(dt);
@@ -392,7 +394,7 @@ export class App {
     if (this.hud.group.visible) this.hud.update(dt);
     this.env.update();
     this.perf.update(frameDt);
-    if (this.mode === 'cardboard' && !this.renderer.xr.isPresenting) this.stereo.render(this.scene, this.camera);
+    if (this.mode === 'cardboard' && !this.renderer.xr.isPresenting) this.stereo.render(this.scene, this.camera, this.passthrough.k > 0.001);
     else this.renderer.render(this.scene, this.camera);
     this.video.updateProjection();
     if (this.debug) this._debug();

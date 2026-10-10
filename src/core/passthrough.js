@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { CONFIG } from '../../config.js';
 import { safeStorage } from './util.js';
 
-const DIST = 8; // o painel fica longe: quase sem diferença entre os dois olhos
+const DIST = 8; // plano de fundo; câmera monocular usa a mesma perspectiva nos dois olhos
 
 export class Passthrough {
   constructor(app) {
@@ -22,6 +22,7 @@ export class Passthrough {
   attach(video, mirror = false) {
     if (this.mesh) return;
     const tex = new THREE.VideoTexture(video);
+    this.liveTexture = tex;
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.minFilter = THREE.LinearFilter; tex.magFilter = THREE.LinearFilter; tex.generateMipmaps = false;
     const mat = new THREE.MeshBasicMaterial({ map: tex, depthTest: false, depthWrite: false, toneMapped: false, transparent: true, opacity: 0, fog: false });
@@ -31,13 +32,35 @@ export class Passthrough {
     this.mirror = mirror;
     this.mesh.renderOrder = -1000; this.mesh.frustumCulled = false; this.mesh.visible = false;
     this.app.camera.add(this.mesh);
+    this._fit();
+  }
+  // Display the same exposure that produced the landmarks, not newer video.
+  presentFrame(frame) {
+    if (!this.mesh) return;
+    if (!frame) { this.mesh.material.map = this.liveTexture; return; }
+    if (!this.frameCanvas) {
+      this.frameCanvas = document.createElement('canvas');
+      this.frameTexture = new THREE.CanvasTexture(this.frameCanvas);
+      this.frameTexture.colorSpace = THREE.SRGBColorSpace;
+      this.frameTexture.minFilter = this.frameTexture.magFilter = THREE.LinearFilter;
+      this.frameTexture.generateMipmaps = false;
+    }
+    const canvas = this.frameCanvas;
+    if (canvas.width !== frame.width || canvas.height !== frame.height) {
+      canvas.width = frame.width; canvas.height = frame.height;
+    }
+    canvas.getContext('2d').drawImage(frame, 0, 0);
+    this.frameTexture.needsUpdate = true;
+    this.mesh.material.map = this.frameTexture;
+    this._fit();
   }
 
   // Tamanho do painel: por padrão PREENCHE a visão inteira (a câmera do celular vê ~63°, os óculos ~90°);
   // com CONFIG.PASSTHROUGH_FILL = false usa a escala real (com bordas pretas).
   _fit() {
     const cam = this.app.camera, v = this.video;
-    const va = (v.videoWidth || 16) / (v.videoHeight || 9);
+    const va = this.frameCanvas && this.mesh.material.map === this.frameTexture
+      ? this.frameCanvas.width / this.frameCanvas.height : (v.videoWidth || 16) / (v.videoHeight || 9);
     const key = cam.fov + '|' + cam.aspect.toFixed(3) + '|' + va.toFixed(3);
     if (key === this._fitKey) return;
     this._fitKey = key;

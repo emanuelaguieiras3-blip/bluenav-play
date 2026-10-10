@@ -69,8 +69,8 @@ export class HandView {
     const up = this._up;
     this.views.forEach((v, i) => {
       const h = hands[i];
-      v.g.visible = !!h && this.visible;
-      if (!h) return;
+      v.g.visible = !!h && !h.stale && this.visible;
+      if (!h || h.stale) return;
       const P = h.points;
       // Envelope follows the tracked palm and finger joints, not a fixed pose.
       this._palmNormal.copy(P[5]).sub(P[0]).cross(this._palmEdge.copy(P[17]).sub(P[0])).normalize();

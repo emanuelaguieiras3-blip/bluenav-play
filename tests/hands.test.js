@@ -164,7 +164,12 @@ test('ray begins at index tip in open, pointing and pinching poses', () => {
     const pointer = input.pointers[0];
     assert.ok(pointer.ray.origin.distanceTo(pointer.hand.tip) < 1e-8, gesture);
     assert.ok(pointer.origin.distanceTo(pointer.hand.tip) < 1e-8, gesture);
-    assert.ok(pointer.ray.direction.distanceTo(pointer.hand.tip.clone().normalize()) < 1e-8, gesture);
+    if (gesture === 'apontando') {
+      const finger = pointer.hand.tip.clone().sub(pointer.hand.points[5]).normalize();
+      assert.ok(pointer.ray.direction.distanceTo(finger) < 1e-8, gesture);
+    } else if (gesture === 'aberta' || !pointer.fingerAim) {
+      assert.ok(pointer.ray.direction.distanceTo(pointer.hand.tip.clone().normalize()) < 1e-8, gesture);
+    }
   }
 });
 

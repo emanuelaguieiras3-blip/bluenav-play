@@ -28,7 +28,7 @@ export class HandTracker {
 
   async start({ facing = 'environment', onStatus = () => {} } = {}) {
     onStatus('Abrindo a câmera…');
-    // a mesma câmera do passthrough; para a detecção o quadro é reduzido (o MediaPipe usa 192/224 px)
+    // A mesma câmera e o mesmo quadro para passthrough e detecção.
     this.video = await getCamera(facing);
     this.mirror = facing === 'user';
     onStatus('Carregando rastreamento de mãos…');
@@ -69,15 +69,16 @@ export class HandTracker {
 
   _onResult(m) {
     this.busy = false;
-    if (!this.running || performance.now() - m.t > 200) return;
+    if (!this.running || performance.now() - m.t > 200 || !m.res) { m.bitmap?.close(); return; }
     this.detectMs = this.detectMs * 0.85 + m.ms * 0.15;
-    // se o celular não dá conta de 30 Hz, espaça um pouco (a mão é suavizada entre detecções)
     // acompanha até 60 Hz; se o celular não der conta, espaça só o necessário
     this.minInterval = Math.max(15, Math.min(50, this.detectMs * 0.85));
-    if (!m.res) return;
     const dt = this.lastT ? (m.t - this.lastT) / 1000 : 1 / 30;
     this.lastT = m.t;
-    this._process(m.res, dt, m.t);
+    try {
+      this._process(m.res, dt, m.t, m.bitmap ? m.bitmap.height / m.bitmap.width : undefined);
+      if (m.bitmap) this.onFrame?.(m.bitmap);
+    } finally { m.bitmap?.close(); }
   }
 
   stop() {
@@ -86,7 +87,17 @@ export class HandTracker {
     this.worker = null; this.busy = false; this.hands = []; this.history = []; this.slots = null;
     this.landmarker?.close(); this.landmarker = null;
     this.gemini.cancel();
+    this.onFrame?.(null);
     // A câmera pertence ao feed compartilhado com o passthrough.
+  }
+  displayPoints(hand) {
+    if (!hand.imageLandmarks) return hand.pontos;
+    const focal = 1 / (2 * Math.tan((this.hfovProvider?.() || HFOV) / 2));
+    const sign = this.mirror ? -1 : 1;
+    return hand.imageLandmarks.map((p, i) => {
+      const depth = -hand.pontos[i][2];
+      return [sign * (p.x - 0.5) * depth / focal, -(p.y - 0.5) * hand.imageAspect * depth / focal, -depth];
+    });
   }
 
   update(now) {
@@ -100,10 +111,8 @@ export class HandTracker {
       this.busy = true;
       this.lastVideoTime = this.video.currentTime;
       this._lastDetect = now;
-      const vw = this.video.videoWidth, vh = this.video.videoHeight;
-      const opts = vw > 640 ? { resizeWidth: 480, resizeHeight: Math.round(480 * vh / vw), resizeQuality: 'low' } : undefined;
       const worker = this.worker;
-      (opts ? createImageBitmap(this.video, opts).catch(() => createImageBitmap(this.video)) : createImageBitmap(this.video)).then((bmp) => {
+      createImageBitmap(this.video).then((bmp) => {
         if (!this.running || this.worker !== worker) { bmp.close(); return; }
         try { worker.postMessage({ type: 'frame', bitmap: bmp, t: now }, [bmp]); }
         catch (e) { bmp.close(); throw e; }
@@ -114,18 +123,24 @@ export class HandTracker {
     this.lastVideoTime = this.video.currentTime;
     const t0 = performance.now();
     let res;
-    try { res = this.landmarker.detectForVideo(this.video, now); } catch { return; }
+    const frame = this.frameCanvas || (this.frameCanvas = document.createElement('canvas'));
+    if (frame.width !== this.video.videoWidth || frame.height !== this.video.videoHeight) {
+      frame.width = this.video.videoWidth; frame.height = this.video.videoHeight;
+    }
+    frame.getContext('2d').drawImage(this.video, 0, 0);
+    try { res = this.landmarker.detectForVideo(frame, now); } catch { return; }
     this.detectMs = this.detectMs * 0.9 + (performance.now() - t0) * 0.1;
     this.minInterval = Math.max(33, this.detectMs * 2);
     this._lastDetect = now;
     const dt = this.lastT ? (now - this.lastT) / 1000 : 1 / 30;
     this.lastT = now;
-    this._process(res, dt, now);
+    this._process(res, dt, now, frame.height / frame.width);
+    this.onFrame?.(frame);
   }
 
-  _process(res, dt, now) {
+  _process(res, dt, now, frameAspect) {
     const vw = this.video.videoWidth || 640, vh = this.video.videoHeight || 480;
-    const ar = vh / vw;
+    const ar = frameAspect || vh / vw;
     // Campo de visão usado na conversão: o MESMO com que a imagem da câmera aparece no passthrough.
     // Assim a mão virtual fica exatamente em cima da mão real vista nos óculos.
     const hfov = (this.hfovProvider && this.hfovProvider()) || HFOV;
@@ -196,7 +211,9 @@ export class HandTracker {
       if (!r.pontosCorrigidos || r.confianca === 0) continue;
       sl.lastSeen = now; sl.wrist = pts[0];
       const c = sl.corrector;
-      sl.out = { id: sl.id, label: chir > 0 ? 'Right' : 'Left', pontos: r.pontosCorrigidos, gesto: r.gesto, confianca: r.confianca, pinchDist: c.pinchDist, pinchStrength: c.pinchStrength, palmFacing: c.palmFacing, raw: pts, stale: false };
+      // Anatomy correction remains for gestures. Visible joints stay on the
+      // observed image rays: bone constraints must never shift their pixels.
+      sl.out = { id: sl.id, label: chir > 0 ? 'Right' : 'Left', pontos: pts, imageAligned: true, imageLandmarks: lm, imageAspect: ar, gesto: r.gesto, confianca: r.confianca, pinchDist: c.pinchDist, pinchStrength: c.pinchStrength, palmFacing: c.palmFacing, raw: pts, stale: false };
     }
 
     // Perda de rastreamento por instantes (mão passa rápido, borrão): mantém a última pose
