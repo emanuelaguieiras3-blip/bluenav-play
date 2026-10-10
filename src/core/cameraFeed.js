@@ -7,7 +7,7 @@ export async function getCamera(facing = 'environment', { width = 960, height = 
   if (pending) return pending;
   pending = (async () => {
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: facing }, width: { ideal: width }, height: { ideal: height }, frameRate: { ideal: 30, max: 30 } },
+      video: { facingMode: { ideal: facing }, width: { ideal: width }, height: { ideal: height }, frameRate: { ideal: 60, max: 60 } },
       audio: false,
     });
     const v = document.createElement('video');

@@ -184,8 +184,18 @@ export class UI {
           s.press = null;
         } else if (!p.pinch) s.press = null;
       }
-      // parar o olhar: só no modo papelão sem mãos
-      if (gaze && sub && sub.onClick && !s.fired && !s.press) {
+      // dedo apontando para o botão: "empurrar" o dedo para frente clica na hora
+      if (p.fingerAim && sub && sub.onClick) {
+        const now = performance.now();
+        s.tap = (s.tap || []).filter((q) => now - q[0] < 180);
+        s.tap.push([now, p.tipDepth]);
+        const minD = Math.min(...s.tap.map((q) => q[1]));
+        if (s.tapArmed !== false && p.tipDepth - minD > 0.025) { s.tapArmed = false; this._fire(s, sub, hit.object); }
+        if (p.tipDepth < (s.tapRest ?? p.tipDepth) - 0.015 || s.tapArmed === undefined) s.tapArmed = true;
+        s.tapRest = s.tapArmed ? p.tipDepth : Math.max(s.tapRest ?? 0, p.tipDepth);
+      } else { s.tap = null; s.tapArmed = undefined; s.tapRest = undefined; }
+      // parar o olhar (papelão sem mãos) ou o dedo em cima do botão por 0,65s
+      if ((gaze || p.fingerAim) && sub && sub.onClick && !s.fired && !s.press) {
         s.dwellT += dt;
         if (s.dwellT >= (sub.dwell ?? CONFIG.DWELL_TIME)) this._fire(s, sub, hit.object);
       }
@@ -193,7 +203,7 @@ export class UI {
 
     // ---- cursor ----
     const strength = p.pinchStrength || 0;
-    const progress = gaze && sub && sub.onClick && !s.fired ? Math.min(1, s.dwellT / (sub.dwell ?? CONFIG.DWELL_TIME)) : 0;
+    const progress = (gaze || p.fingerAim) && sub && sub.onClick && !s.fired ? Math.min(1, s.dwellT / (sub.dwell ?? CONFIG.DWELL_TIME)) : 0;
     let n = null;
     const gameHit = p.main ? app.pointerHit : null;
     if (hit) {

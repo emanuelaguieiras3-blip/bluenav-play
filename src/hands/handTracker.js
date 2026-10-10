@@ -41,7 +41,7 @@ export class HandTracker {
       const opts = (delegate) => ({
         baseOptions: { modelAssetPath: MODEL, delegate },
         runningMode: 'VIDEO', numHands: 2,
-        minHandDetectionConfidence: 0.5, minHandPresenceConfidence: 0.5, minTrackingConfidence: 0.5,
+        minHandDetectionConfidence: 0.5, minHandPresenceConfidence: 0.4, minTrackingConfidence: 0.35,
       });
       try { this.landmarker = await vision.HandLandmarker.createFromOptions(fileset, opts('GPU')); }
       catch { this.landmarker = await vision.HandLandmarker.createFromOptions(fileset, opts('CPU')); }
@@ -71,7 +71,8 @@ export class HandTracker {
     this.busy = false;
     this.detectMs = this.detectMs * 0.85 + m.ms * 0.15;
     // se o celular não dá conta de 30 Hz, espaça um pouco (a mão é suavizada entre detecções)
-    this.minInterval = this.detectMs > 45 ? 50 : this.detectMs > 30 ? 40 : 30;
+    // acompanha até 60 Hz; se o celular não der conta, espaça só o necessário
+    this.minInterval = Math.max(15, Math.min(50, this.detectMs * 0.85));
     if (!m.res) return;
     const dt = this.lastT ? (m.t - this.lastT) / 1000 : 1 / 30;
     this.lastT = m.t;

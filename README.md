@@ -48,6 +48,7 @@ Cada mão tem raio, cursor e clique próprios, e as duas podem usar menus e jogo
 |---|---|
 | Apontar o raio + pinçar e soltar | Selecionar (o clique acontece ao soltar, em cima do alvo) |
 | Pinçar, segurar e arrastar | Rolar listas e mover janelas (pela barra embaixo da janela) |
+| Indicador esticado sobre o botão + empurrar (ou parar 0,65s) | Clique com o dedo |
 | Encostar a ponta do indicador no botão | Toque direto (poke) |
 | Olhar a palma + pinçar | Abre/fecha o menu (barra universal + Biblioteca) |
 | Olhar a palma + pinçar e segurar 1s | Recentraliza a visão |
@@ -78,7 +79,7 @@ O corretor em `src/hands/handCorrector.js` segue as regras do prompt do Gemini e
 
 A saída tem o mesmo formato pedido: `{ pontosCorrigidos, gesto, confianca }`.
 
-O Gemini não aguenta cerca de 30 chamadas por segundo: cada chamada leva centenas de milissegundos e há limite de uso. Por isso ele recebe uma janela de cerca de 0,5s de frames a cada `GEMINI_INTERVAL_MS`, com o prompt original. A resposta recalibra o corretor local e nunca trava a imagem. Ele vem desligado e é ativado na tela inicial.
+O Gemini não aguenta cerca de 30 chamadas por segundo: cada chamada leva centenas de milissegundos e há limite de uso. Por isso ele recebe uma janela de cerca de 0,5s de frames a cada `GEMINI_INTERVAL_MS`, com o prompt original. A resposta recalibra o corretor local e nunca trava a imagem. Ele vem ligado e pode ser desligado na tela inicial. Roda a cada 4 s (limite gratuito do flash-lite), com no máximo 6 quadros por chamada. O reconhecimento rápido não depende dele: a câmera roda a 60 fps e a detecção acompanha até 60 Hz quando o celular aguenta.
 
 ## Desempenho no celular
 

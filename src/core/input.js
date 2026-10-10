@@ -152,6 +152,16 @@ export class Input {
         const dir = pose.clone().sub(shoulder).normalize();
         if (p.fresh) p.rayDir.copy(dir); else p.rayDir.lerp(dir, Math.min(1, dt * 14)).normalize();
         p.origin.copy(pose); p.ray.origin.copy(pose); p.ray.direction.copy(p.rayDir);
+        // indicador esticado e os outros dobrados (instantâneo, sem esperar 0,4s):
+        // o alvo é o que está "embaixo" da ponta do dedo, visto do olho — leve o dedo ao botão
+        const P = h.points, W = P[0], dw = (i) => P[i].distanceTo(W);
+        const ri = dw(8) / dw(6), rm = dw(12) / dw(10), rr = dw(16) / dw(14); // esticado ≈ 1,5 · dobrado < 1,2
+        p.fingerAim = h.gesture !== 'pinça' && (h.gesture === 'apontando' || (ri > 1.3 && rm < 1.2 && rr < 1.2 && ri - Math.max(rm, rr) > 0.2));
+        if (p.fingerAim) {
+          p.ray.origin.copy(eye); p.ray.direction.copy(P[8]).sub(eye).normalize();
+          p.origin.copy(P[8]); p.rayDir.copy(p.ray.direction);
+          p.tipDepth = P[8].distanceTo(eye);
+        }
         p.handPos.copy(h.points[4]).lerp(h.points[8], 0.5);
         p.gesture = h.gesture; p.pinchStrength = h.pinchStrength; p.pokeTip = h.tip;
         // a mão do gesto de sistema (palma virada) não aponta nem pinça no mundo

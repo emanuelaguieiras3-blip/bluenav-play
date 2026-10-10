@@ -20,7 +20,8 @@ self.onmessage = async (e) => {
       const opts = (delegate) => ({
         baseOptions: { modelAssetPath: m.model, delegate },
         runningMode: 'VIDEO', numHands: 2,
-        minHandDetectionConfidence: 0.5, minHandPresenceConfidence: 0.5, minTrackingConfidence: 0.5,
+        // confiança de rastreamento mais baixa: não perde a mão em movimento rápido (borrão)
+        minHandDetectionConfidence: 0.5, minHandPresenceConfidence: 0.4, minTrackingConfidence: 0.35,
       });
       let delegate = 'GPU';
       try { landmarker = await vision.HandLandmarker.createFromOptions(fileset, opts('GPU')); }

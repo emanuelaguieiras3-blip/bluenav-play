@@ -14,7 +14,8 @@ export const CONFIG = {
   GEMINI_PROXY_URL: '',
   // O Gemini não aguenta 30 chamadas/s. Ele recebe uma janela de ~0,5s de frames
   // a cada intervalo e a resposta calibra o corretor local (que roda em todo frame).
-  GEMINI_INTERVAL_MS: 6000,
+  // 4 s = 15 chamadas/min (limite do plano gratuito do flash-lite)
+  GEMINI_INTERVAL_MS: 4000,
 
   // Câmera do celular: campo de visão horizontal (graus). Ajuste se o passthrough parecer grande/pequeno.
   CAMERA_HFOV: 63,

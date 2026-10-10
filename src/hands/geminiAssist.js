@@ -61,20 +61,22 @@ export class GeminiAssist {
 
   // frames: [{t, pontos:[[x,y,z]x21]}]  — chamado pelo HandTracker
   maybeSend(now, frames, localGesture, onResult) {
-    if (!this.enabled || this.busy || now < this.nextAt || frames.length < 6) return;
+    if (!this.enabled || this.busy || now < this.nextAt || frames.length < 4) return;
+    // menos dados = resposta mais rápida: no máximo 6 quadros espaçados da janela
+    if (frames.length > 6) { const step = (frames.length - 1) / 5; frames = Array.from({ length: 6 }, (_, i) => frames[Math.round(i * step)]); }
     if (!CONFIG.GEMINI_API_KEY && !CONFIG.GEMINI_PROXY_URL) { this.status = 'sem chave'; return; }
     this.busy = true;
     const payload = {
       intervaloMs: Math.round((frames[frames.length - 1].t - frames[0].t)),
       unidade: 'metros, espaço da câmera (x direita, y cima, z para o usuário)',
-      frames: frames.map((f) => f.pontos.map((p) => p.map((v) => Math.round(v * 1000) / 1000))),
+      frames: frames.map((f) => f.pontos.map((p) => p.map((v) => Math.round(v * 1000) / 1000))), // milímetros
     };
     const model = CONFIG.GEMINI_MODELS[this.modelIdx];
     const { url, headers } = this._endpoint(model);
     const body = {
       systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
       contents: [{ role: 'user', parts: [{ text: JSON.stringify(payload) }] }],
-      generationConfig: { temperature: 0, responseMimeType: 'application/json', maxOutputTokens: 1500 },
+      generationConfig: { temperature: 0, responseMimeType: 'application/json', maxOutputTokens: 900 },
     };
     if (!this.noThinkingCfg) body.generationConfig.thinkingConfig = { thinkingBudget: 0 };
     this.status = `enviando (${model})…`;
