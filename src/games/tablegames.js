@@ -1,5 +1,6 @@
 // 🃏 SALA DE JOGOS — Madeira e Tempo Parado
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { RigidWorld } from './rigidWorld.js';
 import { std, phys } from './common.js';
 
 const SUITS = [['♠', '#111'], ['♥', '#c0262d'], ['♦', '#c0262d'], ['♣', '#111']];
@@ -49,10 +50,12 @@ export default {
     const FACE_VAL = [3, 4, 1, 6, 2, 5];
     const NORMALS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]].map((v) => new THREE.Vector3(...v));
     const D = 0.045;
+    const world = new RigidWorld({ floor: H + 0.025, limit: 2 });
     const dGeo = new RoundedBoxGeometry(D, D, D, 3, 0.007);
     const dice = [-0.08, 0.08].map((x) => {
       const m = new THREE.Mesh(dGeo, dmats); m.position.set(0.35 + x, H + 0.025 + D / 2, -0.55); root.add(m);
-      return { m, v: new THREE.Vector3(), w: new THREE.Vector3(), rolling: false, settle: 0 };
+      const body = world.add(m, { size: [D, D, D], mass: 0.02, bounce: 0.35 });
+      return { m, body, v: body.velocity, w: new THREE.Vector3(), rolling: false, settle: 0 };
     });
     let diceResult = '', rollCount = 0;
     const rollDice = (strength = 1) => {
@@ -72,11 +75,17 @@ export default {
     const cardGeo = new THREE.BoxGeometry(CW, 0.0012, CH);
     const deck = [];
     for (let i = 0; i < 52; i++) deck.push(i);
+    for (let i = deck.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [deck[i], deck[j]] = [deck[j], deck[i]]; }
     const deckGroup = new THREE.Group(); deckGroup.position.set(-0.3, H + 0.026, -0.6); root.add(deckGroup);
     const deckMeshes = Array.from({ length: 12 }, (_, i) => { const c = new THREE.Mesh(cardGeo, backMat); c.position.y = i * 0.0012; deckGroup.add(c); return c; });
     const dealt = [];
+    let round = 0, reveal = 0, pending = null;
+    const rv = (x) => (x.r === 0 ? 13 : x.r);
     let shuffleT = 0, you = null, house = null, wins = 0, losses = 0, msg = 'Toque em "Virar" para jogar Maior Carta';
     const shuffle = () => {
+      // Dealt cards return to the deck; otherwise it runs out after 26 rounds.
+      deck.length = 0; for (let i = 0; i < 52; i++) deck.push(i);
+      round++;
       for (let i = deck.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [deck[i], deck[j]] = [deck[j], deck[i]]; }
       shuffleT = 0.9;
       // papel contra papel
@@ -100,12 +109,8 @@ export default {
       if (dealt.length > 8) shuffle();
       you = deal(new THREE.Vector3(-0.08 + dealt.length * 0.004, H + 0.027, -0.42), 0);
       house = deal(new THREE.Vector3(0.0 + dealt.length * 0.004, H + 0.027, -0.95), 0.4);
-      const rv = (x) => (x.r === 0 ? 13 : x.r);
-      setTimeout(() => {
-        if (rv(you) > rv(house)) { wins++; msg = 'Você venceu!'; audio.success(); }
-        else if (rv(you) < rv(house)) { losses++; msg = 'A casa venceu desta vez'; }
-        else msg = 'Empate';
-      }, 1100);
+      // Result after the flip animation, in game time; a shuffle cancels it.
+      reveal = 1.1; pending = { you, house, round };
     };
 
     // botões físicos sobre a mesa
@@ -119,27 +124,36 @@ export default {
       drag: {
         start: () => { d.held = true; d.rolling = false; },
         move: (inp) => { d.m.position.lerp(inp.handPos.clone().setY(Math.max(H + 0.05, inp.handPos.y)), 0.5); d.m.rotation.x += 0.1; },
-        end: (inp) => { d.held = false; d.rolling = true; d.settle = 0; d.v.copy(inp.handVel).clampLength(0, 2.5); d.w.set(Math.random() * 20 - 10, 8, Math.random() * 20 - 10); diceResult = ''; rollCount++; },
+        end: (inp) => { d.held = false; d.rolling = true; d.settle = 0; world.release(d.body, inp && !inp.stale ? inp.vel : new THREE.Vector3()); d.v.clampLength(0, 2.5); d.w.set(Math.random() * 20 - 10, 8, Math.random() * 20 - 10); diceResult = ''; rollCount++; },
       },
     }));
 
     const center = new THREE.Vector3(0, 0, -0.75);
     return {
+      world, play, shuffle, getState: () => ({ wins, losses, deck: deck.length, msg }),
       update(dt) {
+        if (pending && (reveal -= dt) <= 0) {
+          const { you: a, house: b, round: r } = pending; pending = null;
+          if (r === round) {
+            if (rv(a) > rv(b)) { wins++; msg = 'Você venceu!'; audio.success(); }
+            else if (rv(a) < rv(b)) { losses++; msg = 'A casa venceu desta vez'; }
+            else msg = 'Empate';
+          }
+        }
+        const before = dice.map(d => d.v.y);
+        for (const d of dice) d.body.held = d.held ? 'drag' : null;
+        world.update(dt);
         // física simples dos dados: quicam na madeira e param
         let allStill = true;
-        for (const d of dice) {
+        for (const [index, d] of dice.entries()) {
           if (d.held) { allStill = false; continue; }
+          if (!d.rolling && d.v.length() > 0.15) { d.rolling = true; d.settle = 0; diceResult = ''; }
           if (!d.rolling) continue;
           allStill = false;
-          d.v.y -= 9.8 * dt;
-          d.m.position.addScaledVector(d.v, dt);
           d.m.rotation.x += d.w.x * dt; d.m.rotation.y += d.w.y * dt; d.m.rotation.z += d.w.z * dt;
           const floorY = H + 0.025 + D / 2;
-          if (d.m.position.y < floorY) {
-            d.m.position.y = floorY;
-            if (Math.abs(d.v.y) > 0.25) { audio.tone({ freq: 700 + Math.random() * 300, to: 400, dur: 0.04, vol: Math.min(0.15, Math.abs(d.v.y) * 0.1) }); audio.noise({ dur: 0.03, freq: 1500, vol: 0.05 }); }
-            d.v.y = -d.v.y * 0.35; d.v.x *= 0.8; d.v.z *= 0.8; d.w.multiplyScalar(0.7);
+          if (before[index] < -0.25 && d.v.y >= 0) {
+            audio.tone({ freq: 700 + Math.random() * 300, to: 400, dur: 0.04, vol: Math.min(0.15, Math.abs(before[index]) * 0.1) }); audio.noise({ dur: 0.03, freq: 1500, vol: 0.05 }); d.w.multiplyScalar(0.7);
           }
           // fica na mesa
           const rel = d.m.position.clone().sub(center).setY(0);

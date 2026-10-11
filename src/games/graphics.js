@@ -5,7 +5,14 @@ import { std, glowTexture } from './common.js';
 import { rng } from '../core/util.js';
 
 export const GRAPHICS_THEMES = {
+  complex: { name: 'Instalação de testes', accent: '#f2a33a', features: ['painéis', 'grade de piso', 'faixas de aviso'] },
+  sandbox: { name: 'Hangar de experimentos', accent: '#90d2ec', features: ['painéis', 'grade de piso', 'bancadas'] },
+  jobs: { name: 'Oficina organizada', accent: '#bbdfb0', features: ['painéis', 'grade de piso', 'bandejas coloridas'] },
+  tactical: { name: 'Pátio de treino', accent: '#ecbc79', features: ['painéis', 'grade de piso', 'coberturas de pedra'] },
   racing: { name: 'Circuito ao entardecer', accent: '#ffb85c', features: ['zebras da pista', 'serras em camadas', 'nuvens'] },
+  ski: { name: 'Montanha nevada', accent: '#a9ddf5', features: ['neve', 'pinheiros', 'portões'] },
+  motorbike: { name: 'Trilha de montanha', accent: '#e7a270', features: ['asfalto', 'pinheiros', 'portões'] },
+  shiftworld: { name: 'Vale alterado', accent: '#c18dd9', features: ['névoa', 'cristais', 'portal'] },
   jungle: { name: 'Floresta viva', accent: '#ccf184', features: ['samambaias', 'pólen', 'luz entre as árvores'] },
   arena: { name: 'Arena de pedra e bronze', accent: '#ffbd72', features: ['arcadas', 'estandartes', 'poeira na luz'] },
   archery: { name: 'Campo de tiro dourado', accent: '#e8b56d', features: ['cercas', 'bandeiras', 'flores do campo'] },
@@ -25,6 +32,18 @@ export const GRAPHICS_THEMES = {
 
 const UP = new THREE.Vector3(0, 1, 0);
 const material = (color, options = {}) => std({ color, roughness: 0.85, ...options });
+
+export function textureSurfaces(ctx) {
+  let applied = 0;
+  ctx.root.traverse(object => {
+    if (!object.isMesh || !object.geometry?.attributes.uv || object.userData.ui) return;
+    for (const mat of Array.isArray(object.material) ? object.material : [object.material]) {
+      if (!mat || mat.map || mat.transparent || !(mat.isMeshStandardMaterial || mat.isMeshLambertMaterial)) continue;
+      mat.map = ctx.tex.get('surfaceGrain'); mat.needsUpdate = true; applied++;
+    }
+  });
+  return applied;
+}
 
 export function createGameGraphics(ctx, id) {
   const theme = GRAPHICS_THEMES[id];
@@ -134,6 +153,22 @@ export function createGameGraphics(ctx, id) {
   };
 
   switch (id) {
+    case 'sandbox': case 'jobs': case 'tactical': {
+      const width = id === 'jobs' ? 6 : id === 'sandbox' ? 14 : 18;
+      grid(width, width, 1, [0, 0.009, 0], theme.accent, 0.12);
+      for (const x of [-width / 3, width / 3]) box([0.6, 0.6, 0.04], '#6c8894', [x, 2.1, -width / 2 + 0.15], { map: ctx.tex.get('instrumentPanel') });
+      break;
+    }
+    case 'complex': {
+      grid(8, 16, 1, [0, 0.009, -8], theme.accent, 0.1);
+      for (const z of [-4, -12]) box([0.6, 0.6, 0.04], '#6c8894', [-4.05, 2.1, z], { map: ctx.tex.get('instrumentPanel') });
+      // Yellow/black warning stripes along the ledge.
+      const stripes = [];
+      for (let i = 0; i < 16; i++) stripes.push({ position: [-3.9 + i * 0.52, 1.0, -16.98], rotation: [0, 0, 0.6], color: i % 2 ? '#1c1c1c' : '#f2c230' });
+      instances(new THREE.BoxGeometry(0.25, 0.5, 0.01), material('#ffffff'), stripes);
+      beam([2.5, 2.6, -5], [1, 3], '#fff4dc', -0.3, 0.03);
+      break;
+    }
     case 'racing': {
       mountains(340, 70, ['#718b91', '#b0c1bf']); clouds(58, 260);
       // Match the game's deterministic track, without modifying its collision ribbon.
@@ -146,6 +181,16 @@ export function createGameGraphics(ctx, id) {
         for (const side of [-1, 1]) placements.push({ position: [p.x + n.x * side * 5.65, 0.035, p.z + n.z * side * 5.65], rotation: [0, Math.atan2(t.x, t.z), 0], color: i % 2 ? '#f0e6d5' : '#b33f32' });
       }
       instances(new THREE.BoxGeometry(0.45, 0.035, curve.getLength() / 420), material('#ffffff'), placements);
+      break;
+    }
+    case 'ski': case 'motorbike': {
+      mountains(160, id === 'ski' ? 55 : 38, id === 'ski' ? ['#a4bbc9', '#e2edf2'] : ['#71846a', '#b2b595'], [0, 0, -70]);
+      clouds(42, 120, false, [0, 0, -70]);
+      break;
+    }
+    case 'shiftworld': {
+      motes('#d3a5ee', 90, [[-7, 7], [0.2, 4], [-29, 0]], 0.04, 0.04);
+      clouds(22, 55, false, [0, 0, -14]);
       break;
     }
     case 'jungle': {

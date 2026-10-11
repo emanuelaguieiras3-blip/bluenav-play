@@ -1,6 +1,8 @@
 // Junta todas as formas de entrada num só "ponteiro":
 // mãos (MediaPipe), controles WebXR, mouse/toque e olhar (centro da tela).
 import * as THREE from 'three';
+import { gamepadIntent } from './gamepad.js';
+import { readXRHand } from './xrHands.js';
 
 const tmp = new THREE.Vector3();
 
@@ -83,18 +85,22 @@ export class Input {
       c.userData.select = false;
       c.addEventListener('selectstart', () => { c.userData.select = true; });
       c.addEventListener('selectend', () => { c.userData.select = false; });
-      c.addEventListener('connected', (e) => { c.userData.connected = true; c.userData.hand = !!e.data.hand; c.userData.handedness = e.data.handedness; });
+      c.addEventListener('connected', (e) => { c.userData.connected = true; c.userData.inputSource = e.data; c.userData.hand = !!e.data.hand; c.userData.handedness = e.data.handedness; });
       c.addEventListener('disconnected', () => { c.userData.connected = false; });
       this.app.rig.add(c);
       return c;
     });
   }
 
-  update(dt) {
+  update(dt, frame) {
     const app = this.app, cam = app.camera;
     cam.getWorldPosition(tmp);
     const eye = tmp.clone();
     this.hands = [];
+    const session = app.renderer.xr.isPresenting ? app.renderer.xr.getSession?.() : null;
+    this.gamepad = gamepadIntent(Array.from(session?.inputSources || []), session ? [] : navigator.getGamepads?.() || []);
+    if (this.gamepad.menu && !this._padMenu) this.menuRequest = true;
+    this._padMenu = this.gamepad.menu;
 
     // Mãos da câmera -> mundo
     const tracker = app.hands;
@@ -126,23 +132,41 @@ export class Input {
         const pts = sm.p.map((p) => new THREE.Vector3(p[0], p[1], p[2]).applyMatrix4(cam.matrixWorld));
         const palm = pts[0].clone().add(pts[5]).add(pts[17]).multiplyScalar(1 / 3);
         const dir = pts[9].clone().sub(pts[0]).normalize();
-        this.hands.push({ id: key, label: h.label, points: pts, gesture: h.gesto, confianca: h.confianca, stale: !!h.stale, palm, dir, tip: pts[8], pinchStrength: h.pinchStrength ?? 0, palmFacing: h.palmFacing ?? 0 });
+        this.hands.push({ id: key, label: h.label, points: pts, gesture: h.gesto, confianca: h.confianca, stale: !!h.stale, palm, dir, tip: pts[8], touchProfile: h.touchProfile, pinchStrength: h.pinchStrength ?? 0, palmFacing: h.palmFacing ?? 0 });
       }
       for (const [key, sm] of disp) if (!seen.has(key)) { sm.age += dt; if (sm.age > 0.5) disp.delete(key); }
     } else this._disp?.clear();
 
+    if (session) {
+      this.hands = [];
+      app.rig.updateMatrixWorld(true);
+      for (const source of session.inputSources) {
+        const old = this._ptrs.get('handnative-' + source.handedness);
+        const hand = readXRHand(source, frame, app.renderer.xr.getReferenceSpace(), app.rig.matrixWorld, old?.prevPinch);
+        if (hand) this.hands.push(hand);
+      }
+    }
+
     // ---- ponteiros: um por mão (ou controle). Uma mão sozinha faz tudo. ----
     const active = [];
-    const xrcs = app.renderer.xr.isPresenting && this.controllers ? this.controllers.filter((c) => c.userData.connected) : [];
+    const xrcs = app.renderer.xr.isPresenting && this.controllers ? this.controllers.filter((c) => c.userData.connected && !c.userData.hand) : [];
     if (xrcs.length) {
       this.source = 'xr';
       xrcs.forEach((c, i) => {
-        const p = this._ptr('xr' + i, 'xr');
+        const p = this._ptr('xr-' + (c.userData.handedness || i), 'xr');
         c.updateMatrixWorld();
         p.ray.origin.setFromMatrixPosition(c.matrixWorld);
         p.ray.direction.set(0, 0, -1).transformDirection(c.matrixWorld);
         p.origin.copy(p.ray.origin);
         p.handPos.copy(p.ray.origin).addScaledVector(p.ray.direction, 0.05);
+        p.quaternion = c.getWorldQuaternion(p.quaternion || new THREE.Quaternion());
+        const gripSpace = c.userData.inputSource?.gripSpace;
+        const pose = gripSpace && frame?.getPose(gripSpace, app.renderer.xr.getReferenceSpace());
+        if (pose) {
+          const grip = new THREE.Matrix4().fromArray(pose.transform.matrix).premultiply(app.rig.matrixWorld);
+          p.handPos.setFromMatrixPosition(grip); p.quaternion.setFromRotationMatrix(grip);
+        }
+        p.gamepad = c.userData.inputSource?.gamepad;
         p.rawPinch = !!c.userData.select; p.gesture = p.rawPinch ? 'pinça' : 'indefinida'; p.pinchStrength = p.rawPinch ? 1 : 0;
         p.side = c.userData.handedness === 'left' ? 'left' : c.userData.handedness === 'right' ? 'right' : (i ? 'left' : 'right');
         active.push(p);
@@ -208,7 +232,7 @@ export class Input {
     const main = (prev && (prev.rawPinch || !busy)) ? prev : (busy || prev || pool.find((p) => p.side === 'right') || pool[0]);
     this._mainId = main.id;
     // toque na tela / clique / espaço = pinça da principal (VR Box sem mãos, computador)
-    const screenPinch = this.mouseDown || this.touchDown;
+    const screenPinch = this.mouseDown || this.touchDown || this.gamepad.select || this.keys.has('Enter');
     for (const p of active) {
       p.main = p === main;
       if (p.source !== 'hand') p.stale = p.source === 'gaze' && !!tracker?.running;

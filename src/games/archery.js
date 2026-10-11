@@ -42,11 +42,14 @@ export default {
     const shaftMat = std({ color: '#c9a25e', roughness: 0.6 });
     const headMat = std({ color: '#3a3d42', metalness: 0.7, roughness: 0.5 });
     const featherMat = std({ map: tex.get('feather'), alphaTest: 0.3, side: THREE.DoubleSide });
+    // Shared geometry: every arrow shot used to allocate five new GPU buffers.
+    const shaftGeo = new THREE.CylinderGeometry(0.005, 0.005, 0.75, 6).rotateX(Math.PI / 2);
+    const headGeo = new THREE.ConeGeometry(0.012, 0.05, 8).rotateX(-Math.PI / 2), featherGeo = new THREE.PlaneGeometry(0.03, 0.12);
     const makeArrow = () => {
       const a = new THREE.Group();
-      a.add(new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.75, 6).rotateX(Math.PI / 2), shaftMat));
-      const h = new THREE.Mesh(new THREE.ConeGeometry(0.012, 0.05, 8).rotateX(-Math.PI / 2), headMat); h.position.z = -0.4; a.add(h);
-      for (let k = 0; k < 3; k++) { const f = new THREE.Mesh(new THREE.PlaneGeometry(0.03, 0.12), featherMat); f.rotation.set(Math.PI / 2, 0, (k * Math.PI * 2) / 3); f.position.z = 0.3; f.rotateY(Math.PI / 2); a.add(f); }
+      a.add(new THREE.Mesh(shaftGeo, shaftMat));
+      const h = new THREE.Mesh(headGeo, headMat); h.position.z = -0.4; a.add(h);
+      for (let k = 0; k < 3; k++) { const f = new THREE.Mesh(featherGeo, featherMat); f.rotation.set(Math.PI / 2, 0, (k * Math.PI * 2) / 3); f.position.z = 0.3; f.rotateY(Math.PI / 2); a.add(f); }
       return a;
     };
     const nocked = makeArrow(); bowGroup.add(nocked);
@@ -152,6 +155,8 @@ export default {
               }
             }
           }
+          // Arrows knock the loose physical props (cans, crates, balls).
+          if (!f.done && ctx.app?.sceneProps?.impact(prev, f.a.position, f.v, 0.05)) { f.done = true; audio.noise({ dur: 0.05, freq: 1200, vol: 0.1 }); }
           if (f.a.position.y < 0.02) { f.done = true; f.a.position.y = 0.02; audio.noise({ dur: 0.05, freq: 600, vol: 0.06 }); }
         }
         while (flying.length > 15) { const o = flying.shift(); o.a.removeFromParent(); }

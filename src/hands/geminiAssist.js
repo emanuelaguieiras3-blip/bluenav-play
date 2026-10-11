@@ -29,8 +29,12 @@ REGRAS OBRIGATÓRIAS:
 {
   "pontosCorrigidos": [[x,y,z], [x,y,z], ...],
   "gesto": "pinça|aberta|apontando|indefinida",
-  "confianca": 0.0 a 1.0
+  "confianca": 0.0 a 1.0,
+  "toque": { "marginMm": 4, "releaseMm": 30 }
 }
+- Calibre somente a tolerância do toque pelo ruído do indicador: marginMm entre 2 e 8 mm; releaseMm entre 25 e 45 mm.
+- Não decida cliques, não invente posições de botões e não aumente a tolerância para compensar movimentos reais.
+- Sem evidência suficiente, omita toque. O clique é calculado localmente pela colisão do dedo com o botão.
 - Sem explicações, sem comentários, sem texto extra
 - Se não tiver certeza, devolva os pontos originais e confiança baixa
 

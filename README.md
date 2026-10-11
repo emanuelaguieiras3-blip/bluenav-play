@@ -1,19 +1,83 @@
 # BlueNav Play
 
+Salas por código e exigências para hospedagem: [NETWORK.md](NETWORK.md). A sincronização atual cobre presença e posição; as regras dos jogos ainda não são multiplayer.
+
+Objetivo atual: criar jogos próprios que reproduzam o melhor possível as mecânicas
+de Gorilla Tag, BONELAB sandbox, Job Simulator, Pavlov VR e Beat Saber, com interface
+organizada, física e controles VR precisos. O catálogo principal contém jogos BlueNav.
+Esses modos ainda são protótipos, não reproduções completas dos jogos comerciais.
+Arte, mapas, áudio e código comerciais não foram copiados.
+
+Na Oficina de Trabalho, solte cada item na estação correspondente e toque no
+botão: carimbe documentos, pese pacotes e encha copos. Depois solte o item na bandeja com a
+etiqueta certa. Entregas sem preparo e estações erradas não contam. O modo pode
+ser jogado com uma ou duas mãos.
+
+Atualização de 11/10/2026: catálogo com 20 jogos. Novidades:
+
+- **Complexo**: aventura física inspirada nas mecânicas de BONEWORKS, com conteúdo
+  próprio. Tem sala de descanso, museu com balança e borda para escalar, e pátio
+  com inimigos ragdoll. A pistola fica na mão depois da pinça; outra pinça atira.
+  Mão bem aberta solta a arma. Pince no quadril para tirar um carregador, encaixe
+  na base da arma e puxe o ferrolho com a outra mão. Há cano e cassetete. Socos e
+  objetos arremessados derrubam inimigos. Caixas viram escada; bordas podem ser
+  escaladas com a pinça.
+- **Pega-pega VR**: locomoção só com os braços, no estilo Gorilla Tag. A mão fica
+  presa onde toca; o corpo se move. Ao soltar, a velocidade média vira salto
+  (x1,1, até 6,5 m/s). Mapa com casa na árvore de dois andares, troncos, pedras e
+  galhos. Quem pega fica cor de lava.
+- **Piloto**: corrida de 3 voltas contra 3 carros, com largada por semáforo,
+  posição, aderência por piso, derrapagem, batidas entre carros, muro de pneus e
+  cones físicos. Carros com carroceria curva (extrusão com chanfro).
+- **Ritmo de Luz**: palco no estilo dos jogos de ritmo do Quest, com lasers,
+  túnel de anéis, faixas da pista e painéis de combo e multiplicador. O bloco se
+  divide na direção do corte e as metades caem com física.
+- **Física em todos os jogos**: objetos soltos temáticos (barris, potes que
+  quebram, latas, cocos, pedras, troncos, frutas, dados). Eles colidem com os
+  móveis do próprio jogo, são empurrados pela mão, pegos com a pinça de perto e
+  atingidos por balas e flechas. Corpos redondos colidem como esferas.
+- **Geometria arredondada**: toda caixa alinhada vira caixa com bordas
+  arredondadas, exceto em Mundo de Blocos e Reinos, que são de cubos.
+
+Atualização VR de 10/10/2026: catálogo com 19 jogos, incluindo Laboratório Sandbox,
+Oficina de Trabalho e Treino Tático VR. A biblioteca curva usa três páginas de
+até nove jogos, para manter os alvos maiores e legíveis em VR.
+
+Joystick esquerdo anda nos jogos com caminhada; direito gira 30°. Um controle
+WebXR sozinho também permite andar. VR Box: pareie o controle no Bluetooth do
+aparelho; modo gamepad usa joystick/A, modo teclado usa ↑/↓ para andar, ←/→ para
+girar e Enter para selecionar. Compatibilidade real depende do controle/navegador.
+
+Mãos nativas WebXR alimentam os jogos quando o runtime fornece juntas. VR Box
+mantém tracking por câmera. Ainda falta validar headset e controle físicos.
+
+Ajustes rápidos → Objetos físicos oferece bancada de pegar, lançar e empilhar
+em qualquer jogo. Novos modos, bola do laboratório e dados usam física compartilhada.
+Isso não transforma todas as malhas antigas em colliders: a migração por jogo
+continua pendente. Texturas de materiais móveis têm até 128 px.
+
+Testes: `npm.cmd test`, `node tests/menu-touch.mjs`, `node tests/vrbox-flow.mjs`
+e `node tests/upgrade-flow.mjs`. Testes de navegador exigem servidor local em
+`127.0.0.1:8080` e Chrome no caminho definido nos scripts.
+
+Estado detalhado, limitações e prompt de continuidade: [CLAUDE_HANDOFF.md](CLAUDE_HANDOFF.md).
+No Claude Code aberto nesta pasta, `/continue-vr` lê esse repasse.
+
 ## VR Box: música, mãos e acessos
 
-- Na tela inicial, **Ritmo de Luz · escolher música** entra em tela dividida e abre o seletor. Escolha uma faixa sintetizada ou um arquivo local MP3/WAV/OGG compatível com o navegador, até 25 MB e 5 minutos. O arquivo não é enviado para um servidor. Informe BPM se o mapa automático não acompanhar bem as batidas.
-- Ritmo de Luz é um jogo próprio de sabres: blocos com setas, cortes por movimento, duas cores, combo e pausa. É inspirado no gênero de Beat Saber; não inclui o jogo ou seu catálogo de músicas. Se houver uma mão, ela corta as duas cores.
+- Na tela inicial, **Ritmo de Luz · escolher música** entra em tela dividida e abre o seletor. Escolha uma faixa sintetizada ou arquivo local MP3/WAV/OGG compatível, até 25 MB e 5 minutos. Para usar um mapa Beat Saber v2/v3 ou os elementos básicos de v4, selecione primeiro o `.dat` (até 2 MB), informe o BPM inicial e depois selecione o áudio correspondente. Um mapa v2/v3 com evento de BPM no beat 0 dispensa o campo manual; mudanças posteriores ajustam notas, bombas e paredes. Em v4, informe o BPM manualmente porque o arquivo separado de dados de áudio ainda não é lido. Arquivos ficam no aparelho. Sem mapa, informe o BPM se a geração automática não acompanhar as batidas. O controle de sincronização adianta ou atrasa os blocos em até 200 ms. Há modos Fácil, Normal e Expert.
+- Ritmo de Luz é jogo próprio de sabres: blocos com setas, cortes por movimento, duas cores, pares de notas no Expert, combo, bombas, paredes e pausa. É inspirado no gênero de Beat Saber; não inclui o jogo ou músicas comerciais. Vermelho corresponde à esquerda e azul à direita. Se houver uma mão, ela corta as duas cores. O corte usa o movimento do trecho da lâmina que tocou o bloco. Paredes de agachar e paredes de altura livre usam suas dimensões no colisor. Em VR Box com mãos, desvie com a mão; sem mãos rastreadas, paredes não causam dano inevitável ao ponteiro de olhar. Em headset 6DoF, desvie com a cabeça. Mapas importados ainda usam colisores e pontuação aproximados, sem suporte a todos os tipos de nota.
+- A ajuda do Ritmo de Luz aparece na contagem regressiva e recolhe no início dos cortes para liberar a pista. O aviso de acerto, erro ou obstáculo aparece acima da pista; o botão `?` reabre a ajuda.
 - As mãos virtuais acompanham MediaPipe; selecionar, arrastar, tocar com indicador, gesto de palma para menu e recentralização seguem convenções próximas ao Meta. Webcam monocular não tem a precisão ou a profundidade dos sensores de um Quest. Use HTTPS, boa iluminação e mantenha as mãos no campo de visão da câmera traseira.
 - A barra universal tem **Jogos externos** e **Security**. Esses painéis usam toque na tela; configure antes de colocar os óculos. A simulação e as seleções da cena pausam enquanto o painel está aberto.
 - YouTube tem busca, catálogo e **Abrir link** (link HTTPS ou ID de vídeo). A reprodução é um painel 2D duplicado para os olhos no VR Box; não é projeção imersiva de vídeo 360°/180°. A referência TikTok indicada não pôde ser acessada; a interface é própria, sem alegação de cópia exata.
 - Ao escolher um vídeo, o player oficial incorporado aparece **dentro da janela flutuante**, com perspectiva e posição sincronizadas à janela em cada olho. A barra inferior permite arrastar por pinça; os botões virtuais controlam assistir/pausa, ±10 segundos, volume e parar. Minimizar esconde o player e permite voltar pelo dock. Não há camada de reprodução ocupando a tela inteira. No VR Box há um iframe por olho e apenas um com som. O navegador ainda pode exigir autorização de som por um toque real antes de colocar os óculos; a API não contorna essa regra. Vídeos privados, removidos ou com incorporação desativada pelo autor não podem ser reproduzidos aqui. Fechar remove os iframes e interrompe o som.
 
-### Caminhada e melhorias comuns aos 16 jogos
+### Caminhada e melhorias comuns aos jogos
 
 Nos jogos com caminhada (Início, Selva, Arena, Reinos, Masmorra, Sobrevivência, Mundo de Blocos e topo da Escalada), feche a mão esquerda por 0,3 segundo para andar na direção horizontal do olhar, a 0,85 m/s. Abra para parar. Com uma mão só, ela assume essa função. Pinça, mão apontando, mão sobre UI e rastreamento de baixa confiança não são comandos de caminhada. Após abrir menus, perder a mão ou pausar, abra a mão antes de voltar a caminhar. Há verificação de caminho e margem lateral para reduzir atravessamento de obstáculos. Apontar para o chão não aciona teleporte por padrão; no Mundo de Blocos, **Teleporte** é uma ferramenta opcional selecionada na barra.
 
-Os 16 jogos usam pausa global para menus/janelas e um relógio de simulação que não avança durante a pausa. Arrastos de objetos são soltos ao pausar. O HUD tem reinício rápido (ícone de seta circular) e ajuda **?**; a ajuda inicial recolhe após 12 segundos. Recursos compartilhados são liberados uma vez, e fechar janelas libera suas geometrias e texturas. Não houve reescrita das 16 mecânicas: as melhorias são de interação, pausa, navegação e manutenção; a movimentação própria de corrida, natação e escalada continua específica a cada jogo.
+Os 19 jogos usam pausa global para menus/janelas e um relógio de simulação que não avança durante a pausa. Arrastos de objetos são soltos ao pausar. O HUD tem reinício rápido (ícone de seta circular) e ajuda **?**; a ajuda inicial recolhe após 12 segundos. Recursos compartilhados são liberados uma vez, e fechar janelas libera suas geometrias e texturas. As melhorias comuns são de interação, pausa, navegação e manutenção; corrida, natação e escalada mantêm lógica própria.
 
 ### Compatibilidade dos jogos externos
 
@@ -35,7 +99,7 @@ As chaves em `config.js` foram mantidas por decisão do proprietário. São púb
 
 ### Verificação
 
-`npm install` e `npm test` verificam gestos, colisões, mapas e integrações. No Windows com política de PowerShell restritiva, use `npm.cmd`. Para os testes de navegador, inicie `python -m http.server 8080 --bind 127.0.0.1` e execute `node tests/vrbox-flow.mjs`. O fluxo usa WAV local e resposta Gemini simulada; não valida disponibilidade da chave, câmera real ou desempenho no celular. `node tests/render-audit.mjs current mobile` verifica renderização dos 16 jogos com Chromium/SwiftShader, sem medir FPS de aparelho real.
+`npm install` e `npm test` verificam gestos, colisões, mapas e integrações. No Windows com política de PowerShell restritiva, use `npm.cmd`. Para os testes de navegador, inicie `python -m http.server 8080 --bind 127.0.0.1` e execute `node tests/vrbox-flow.mjs`. O fluxo usa WAV local e resposta Gemini simulada; não valida disponibilidade da chave, câmera real ou desempenho no celular. `node tests/render-audit.mjs current mobile` verifica renderização dos 19 jogos com Chromium/SwiftShader, sem medir FPS de aparelho real.
 
 Ruflo foi inicializado localmente em modo mínimo; seus dados de execução ficam fora do Git. Não há swarm, agentes ou serviços Ruflo necessários para rodar o site.
 
@@ -70,8 +134,10 @@ Cada mão tem raio, cursor e clique próprios, e as duas podem usar menus e jogo
 
 | Jogo | Duas mãos | Uma mão |
 |---|---|---|
+| Complexo | arma numa mão; a outra pega carregador e puxa o ferrolho | arma; botão Recarregar |
 | Piloto | gire o volante com as duas | mão para os lados |
-| Selva / Escalada | agarre com uma e depois com a outra para subir | pince e puxe |
+| Pega-pega VR | empurre o chão e os troncos alternando os braços | empurre com uma mão |
+| Escalada | agarre com uma e depois com a outra para subir | pince e puxe |
 | Arena | espada na direita, escudo na esquerda | espada; o escudo flutua |
 | Arqueiro | esquerda segura o arco, direita puxa a corda | pince e puxe para trás |
 | Ritmo de Luz | duas esferas; a cor da mão vale bônus | uma esfera |
@@ -112,7 +178,7 @@ Cada jogo mostra guia com comandos para uma ou duas mãos e estado dos gestos. O
 | `src/ui/` | Tema e ícones (`theme.js`), interação estilo Quest, janelas (máx. 3), teclado, barra universal + Biblioteca curva, teleporte |
 | `src/hands/` | MediaPipe Hands, corretor local (suavização, anatomia, gestos) e o assistente Gemini |
 | `src/media/youtube.js` | YouTube Data API v3: em alta, 360°, 180°, recomendações e busca, mais o player |
-| `src/games/` | Os 16 jogos, cada um carregado só quando é aberto |
+| `src/games/` | Os 19 jogos, cada um carregado só quando é aberto |
 
 ## Rastreamento de mãos e Gemini
 
@@ -148,14 +214,14 @@ Tudo em `config.js` fica visível para quem abrir o site.
 
 ## Limitações conhecidas
 
-- Testes automatizados: `npm ci` e `npm test`. Cobrem rastreamento, contato, Gemini simulado, cadência e lógica/geometria dos 16 jogos com uma ou duas mãos. Canvas e áudio usam dublês nos testes de jogos; estes não validam imagem final, câmera física, WebXR ou FPS real. Use `?auto=flat&fakehand=two&game=rhythm&debug` para inspeção e F2 para FPS, inferência e estado Gemini. Valide câmera/FPS no aparelho com HTTPS.
+- Testes automatizados: `npm ci` e `npm test`. Cobrem rastreamento, contato, Gemini simulado, cadência e lógica/geometria dos 20 jogos com uma ou duas mãos. Canvas e áudio usam dublês nos testes de jogos; estes não validam imagem final, câmera física, WebXR ou FPS real. Use `?auto=flat&fakehand=two&game=rhythm&debug` para inspeção e F2 para FPS, inferência e estado Gemini. Valide câmera/FPS no aparelho com HTTPS.
 
 - O player do YouTube é um iframe. O navegador não deixa desenhá-lo dentro da cena 3D, então ele abre numa camada por cima (lado a lado no modo papelão). No modo WebXR imersivo o vídeo não aparece.
 - Carregamento inicial: cerca de 40 KB do app + 166 KB do Three.js (gzip), ou seja, uns 206 KB. O modelo do MediaPipe (alguns MB) é baixado depois, só se o rastreamento de mãos estiver ligado.
 
 ## Controles de mãos e validação
 
-- Os 16 jogos mostram instruções para uma ou duas mãos e o gesto atual. O botão `?` oculta ou mostra o guia.
+- Os 20 jogos mostram instruções para uma ou duas mãos e o gesto atual. O botão `?` oculta ou mostra o guia.
 - O toque direto detecta o percurso do dedo entre quadros. Cada contato gera um clique, com confirmação verde e som. Retire o dedo para clicar novamente.
 - A biblioteca e a barra ficam ao alcance da mão (aproximadamente 0,6 m). A profundidade é estimada com o campo de visão físico da câmera, independente da ampliação do passthrough. A perda de rastreamento exige recuar o dedo antes de um novo contato.
 - Ajustes rápidos abrem dentro do VR. O botão de câmera pode abrir o feed e alternar o mundo real; o painel informa se a calibração Gemini está ativa ou indisponível.

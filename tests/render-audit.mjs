@@ -73,6 +73,7 @@ try {
     if (!pauseCheck.paused || !pauseCheck.resumed) throw new Error(`${game.id}: menu pause/resume failed`);
     const report = await page.evaluate(() => {
       const app = window.__app;
+      app.menu.toggle(false); app.menu.update(1);
       app.renderer.render(app.scene, app.camera);
       const programs = app.renderer.info.programs || [];
       return { id: app.gameId, calls: app.renderer.info.render.calls, triangles: app.renderer.info.render.triangles,

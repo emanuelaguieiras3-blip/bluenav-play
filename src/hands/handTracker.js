@@ -217,7 +217,7 @@ export class HandTracker {
       const c = sl.corrector;
       // Anatomy correction remains for gestures. Visible joints stay on the
       // observed image rays: bone constraints must never shift their pixels.
-      sl.out = { id: sl.id, label: chir > 0 ? 'Right' : 'Left', pontos: pts, imageAligned: true, imageLandmarks: lm, imageAspect: ar, gesto: r.gesto, confianca: r.confianca, pinchDist: c.pinchDist, pinchStrength: c.pinchStrength, palmFacing: c.palmFacing, raw: pts, stale: false };
+      sl.out = { id: sl.id, label: chir > 0 ? 'Right' : 'Left', pontos: pts, imageAligned: true, imageLandmarks: lm, imageAspect: ar, gesto: r.gesto, confianca: r.confianca, pinchDist: c.pinchDist, pinchStrength: c.pinchStrength, palmFacing: c.palmFacing, touchProfile: this.gemini.enabled ? c.touchProfile : null, raw: pts, stale: false };
     }
 
     // Perda de rastreamento por instantes (mão passa rápido, borrão): mantém a última pose
@@ -244,6 +244,7 @@ export class HandTracker {
       this.gemini.maybeSend(performance.now(), this.history.slice(), main.gesto, (res2) => {
         if (this.running && slot.generation === generation && performance.now() - slot.lastSeen < 200) {
           corr.applyReference(res2.pontosCorrigidos, res2.confianca);
+          corr.applyTouchReference(res2.toque, res2.confianca);
         }
       });
     }
