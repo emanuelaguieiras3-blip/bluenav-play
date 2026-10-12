@@ -1,6 +1,6 @@
 // Controls describe the actual mechanics in each game, including one-hand play.
 export const HAND_CONTROLS = {
-  plaza: ['Toque botões com o dedo. Pinça atira e freia. Relógio volta ao quarto.', 'Duas mãos giram o volante; empurre plataformas com os braços.'],
+  plaza: ['Aponte e pince nos painéis, ou aproxime-se e toque. Pinça atira e freia.', 'Duas mãos giram o volante; empurre plataformas com os braços. Relógio volta ao quarto.'],
   complex: ['Pince a arma; pince de novo para atirar. Mão bem aberta solta.', 'Outra mão: carregador no quadril, base da arma, puxe o ferrolho.'],
   sandbox: ['Pince para pegar; gire o pulso. Bata para empurrar.', 'Pesados: pince com as duas mãos. Arremesse!'],
   jobs: ['Solte o item na estação. Toque no botão.', 'Cada mão leva um item. Toque no botão da estação.'],

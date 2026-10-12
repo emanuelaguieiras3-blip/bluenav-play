@@ -170,7 +170,7 @@ export default {
       // Wardrobe panel on the left wall: ◀ item ▶ Usar per category.
       // Kiosks stand within reach, angled toward the spawn point.
       const backing = (parent, w, h, y) => { const b = new THREE.Mesh(new RoundedBoxGeometry(w, h, 0.05, 2, 0.02), std({ color: '#1d2433', roughness: 0.6 })); b.position.set(0, y, -0.04); parent.add(b); const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.12, y - h / 2, 12), std({ color: '#8a8f98', metalness: 0.6 })); leg.position.set(0, (y - h / 2) / 2, -0.06); parent.add(leg); };
-      const panel = new THREE.Group(); panel.position.set(-1.75, 0, -1.9); panel.rotation.y = 0.7; g.add(panel); backing(panel, 2.35, 2.35, 1.6);
+      const panel = new THREE.Group(); panel.position.set(-1.55, 0, -2.7); panel.rotation.y = 0.4; g.add(panel); backing(panel, 2.35, 2.35, 1.6);
       label(panel, 'GUARDA-ROUPA E GARAGEM', 0, 2.68, 0, { w: 1.6, h: 0.11 });
       const preview = { ...wardrobe.look }, rows = {};
       const categories = Object.keys(COSMETICS);
@@ -187,7 +187,7 @@ export default {
         rows[cat].userData.set(rowText(cat));
       });
       // Room browser on the right wall.
-      const board = new THREE.Group(); board.position.set(1.75, 0, -1.9); board.rotation.y = -0.7; g.add(board); backing(board, 2.2, 2.45, 1.6);
+      const board = new THREE.Group(); board.position.set(1.55, 0, -2.7); board.rotation.y = -0.4; g.add(board); backing(board, 2.2, 2.45, 1.6);
       label(board, `SALAS · ${MAP_COUNT} MAPAS`, 0, 2.6, 0, { w: 1.4, h: 0.12 });
       let filter = null, page = 0, maps = listMaps();
       const pageLabel = label(board, '', 0, 0.62, 0, { w: 0.8, h: 0.08, size: 0.3 });
