@@ -1,5 +1,6 @@
 // ⚔️ ARENA DE BATALHA — Ferro e Pedra
 import { Particles, glowTexture, std, hands2, segmentIntersectsBox } from './common.js';
+import { HandSaberTracker } from './handSaber.js';
 
 export default {
   id: 'arena',
@@ -41,6 +42,7 @@ export default {
 
     // ---- oponente ----
     const foe = new THREE.Group();
+    foe.name = 'gladiator';
     const leatherArm = std({ map: tex.get('leather'), color: '#8a5a32' });
     const cloth = std({ map: tex.get('fabric'), color: '#7a2a24' });
     const skin = std({ color: '#c79a76', roughness: 0.8 });
@@ -48,13 +50,18 @@ export default {
     const skirt = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, 0.35, 12).translate(0, 0.82, 0), cloth);
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 16, 12).translate(0, 1.78, 0), skin);
     const helm = new THREE.Mesh(new THREE.SphereGeometry(0.145, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2).translate(0, 1.8, 0), steel);
+    const visor = new THREE.Mesh(new THREE.BoxGeometry(0.21, 0.032, 0.045).translate(0, 1.8, 0.125), std({ color: '#22262a' }));
+    const crest = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.13, 0.19).translate(0, 1.98, 0), cloth);
+    const belt = new THREE.Mesh(new THREE.CylinderGeometry(0.235, 0.235, 0.055, 12).translate(0, 0.97, 0), steel);
+    const shoulders = [-1, 1].map(sign => new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 6).translate(sign * 0.24, 1.5, 0), steel));
+    const boots = [-1, 1].map(sign => new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.16, 0.23).translate(sign * 0.1, 0.08, 0.04), leatherArm));
     const legs = [-0.1, 0.1].map((x) => new THREE.Mesh(new THREE.CapsuleGeometry(0.07, 0.6, 4, 8).translate(x, 0.38, 0), cloth));
     const foeArm = new THREE.Group(); foeArm.position.set(0.28, 1.45, 0);
     const foeSword = blade.clone(); foeSword.position.set(0, -0.05, 0.25); foeSword.rotation.x = Math.PI / 2;
     const foeArmMesh = new THREE.Mesh(new THREE.CapsuleGeometry(0.05, 0.4, 4, 8).rotateX(Math.PI / 2).translate(0, 0, 0.2), skin);
     foeArm.add(foeArmMesh, foeSword);
     const foeShield = shield.clone(); foeShield.position.set(-0.3, 1.25, 0.2);
-    foe.add(torso, skirt, head, helm, ...legs, foeArm, foeShield);
+    foe.add(torso, skirt, head, helm, visor, crest, belt, ...shoulders, ...boots, ...legs, foeArm, foeShield);
     foe.position.set(0, 0, -2.6); root.add(foe);
     const glowMat = new THREE.MeshBasicMaterial({ color: '#ff6a3a', transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
     const telegraph = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 8), glowMat); foeArm.add(telegraph); telegraph.position.z = 0.6;
@@ -65,10 +72,15 @@ export default {
     vignette.renderOrder = 990; ctx.camera.add(vignette);
     ctx.onDispose(() => { vignette.removeFromParent(); vignette.geometry.dispose(); vignette.material.dispose(); });
 
-    let hpYou = 10, hpFoe = 10, phase = 'idle', phaseT = 2, tremble = 0, hitCd = 0, guardSide = 1, stepT = 0, wins = 0;
+    let hpYou = 10, hpFoe = 10, phase = 'idle', phaseT = 2, tremble = 0, hitCd = 0, guardSide = 1, stepT = 0, wins = 0, manualSwingT = 0;
     const tip = new THREE.Vector3(), prevTip = new THREE.Vector3(), tmp = new THREE.Vector3();
+    const swingAxis = new THREE.Vector3(0, 1, 0), swingQ = new THREE.Quaternion();
     const foeBox = new THREE.Box3(), shieldBox = new THREE.Box3();
-    let swordReady = false, swordOwner = null, feedback = '', feedbackTime = 0;
+    let swordReady = false, swordOwner = null, feedback = '', feedbackTime = 0, swordGrip = null;
+    const foeVelocity = new THREE.Vector3(), enemyTip = new THREE.Vector3(), previousEnemyTip = new THREE.Vector3();
+    const playerBox = new THREE.Box3(), playerShieldBox = new THREE.Box3(), playerSwordBox = new THREE.Box3();
+    let enemyReady = false, strikeResolved = false, defeated = 0;
+    const styles = [{ name: 'Duelista', wind: 0.7, strike: 0.22, speed: 0.95, color: '#6d3143' }, { name: 'Guardião', wind: 1.05, strike: 0.32, speed: 0.55, color: '#30566d' }, { name: 'Veterano', wind: 0.85, strike: 0.25, speed: 0.8, color: '#6a5933' }];
 
     const impact = (p, big) => {
       for (let k = 0; k < (big ? 26 : 12); k++) sparks.spawn(p, new THREE.Vector3((Math.random() - 0.5) * 3, Math.random() * 2.5, (Math.random() - 0.5) * 3), { life: 0.35, color: [1, 0.75, 0.35, 1], gravity: 6 });
@@ -77,18 +89,36 @@ export default {
     };
 
     return {
+      getState: () => ({ health: hpYou, enemyHealth: hpFoe, wins, phase, defeated: defeated > 0 }),
       update(dt, t) {
+        const style = styles[wins % styles.length]; cloth.color.set(style.color);
+        feedbackTime = Math.max(0, feedbackTime - dt);
         const eye = ctx.eye(), fwd = ctx.forward();
         // espada na mão direita (dominante), escudo na esquerda. Com uma mão só: espada nela, escudo flutua.
         const { main: swordP, off: shieldP } = hands2(ctx);
         let swordPos, swordDir;
-        if (swordP && swordP.source === 'hand' && swordP.hand) { swordPos = swordP.hand.palm.clone().lerp(swordP.hand.points[9], 0.5); swordDir = swordP.hand.dir.clone(); }
+        if (swordP && swordP.source === 'hand' && swordP.hand) {
+          // Closed fist holds the hilt, as with the rhythm sabers.
+          const native = String(swordP.hand.id).startsWith('native-');
+          if (!swordGrip || swordGrip.owner !== swordP.id) { swordGrip = new HandSaberTracker(native); swordGrip.owner = swordP.id; }
+          // One hand: a closed fist means walking here, so the blade follows the fingers.
+          const pose = swordGrip.update(swordP.hand, shieldP ? 'fist' : 'fingers', dt); swordPos = pose.base.clone(); swordDir = pose.dir.clone();
+        }
         else if (swordP && swordP.source === 'xr') { swordPos = swordP.handPos.clone(); swordDir = swordP.ray.direction.clone(); }
         else { const rd = (swordP || input).ray.direction; swordPos = eye.clone().addScaledVector(rd, 0.55).add(new THREE.Vector3(0, -0.15, 0)); swordDir = rd.clone(); }
         const shieldPos = shieldP && shieldP.hand ? shieldP.hand.palm.clone() : shieldP ? shieldP.handPos.clone() : eye.clone().addScaledVector(fwd, 0.6).add(tmp.set(-fwd.z, 0, fwd.x).multiplyScalar(-0.42)).add(new THREE.Vector3(0, -0.4, 0));
         const swinging_input = swordP ? swordP.pinchDown && !swordP.uiBusy : input.pinchDown;
+        const manualControl = !swordP || (swordP.source !== 'hand' && swordP.source !== 'xr');
+        let manualSwingStarted = false;
+        if (manualControl && swinging_input && manualSwingT <= 0) { manualSwingT = 0.32; manualSwingStarted = true; }
+        if (!manualControl) manualSwingT = 0;
         sword.position.copy(swordPos);
         sword.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), swordDir.normalize());
+        if (manualSwingT > 0) {
+          const progress = 1 - manualSwingT / 0.32;
+          sword.quaternion.premultiply(swingQ.setFromAxisAngle(swingAxis, (progress - 0.5) * 1.8));
+          manualSwingT = Math.max(0, manualSwingT - dt);
+        }
         if (tremble > 0) { tremble -= dt; sword.position.x += Math.sin(t * 90) * 0.006 * tremble * 4; sword.position.y += Math.cos(t * 77) * 0.006 * tremble * 4; }
         shield.position.copy(shieldPos); shield.lookAt(eye.x, shieldPos.y, eye.z);
 
@@ -96,29 +126,50 @@ export default {
         sword.updateWorldMatrix(true, false);
         tip.set(0, 0.85, 0).applyMatrix4(sword.matrixWorld);
         const owner = swordP?.id || input.source;
-        if (!swordReady || swordOwner !== owner || tip.distanceTo(prevTip) > 0.6) prevTip.copy(tip);
+        if (!swordReady || swordOwner !== owner || manualSwingStarted || tip.distanceTo(prevTip) > 0.6) prevTip.copy(tip);
         swordReady = true; swordOwner = owner;
         const tipSpeed = tip.distanceTo(prevTip) / Math.max(dt, 1e-3);
-        feedbackTime = Math.max(0, feedbackTime - dt);
 
         // oponente encara o jogador e se aproxima
         const toYou = tmp.copy(eye).sub(foe.position).setY(0);
         const dist = toYou.length();
         foe.rotation.y = Math.atan2(toYou.x, toYou.z);
-        if (dist > 1.7 && phase !== 'strike') { foe.position.addScaledVector(toYou.normalize(), dt * 0.7); if ((stepT -= dt) < 0) { stepT = 0.5; audio.noise({ dur: 0.07, freq: 300, vol: 0.12, echo: true }); } }
-        foeShield.position.y = 1.25 + guardSide * 0.15;
+        foe.position.addScaledVector(foeVelocity, dt); foeVelocity.multiplyScalar(Math.exp(-5 * dt));
+        const radial = Math.hypot(foe.position.x, foe.position.z); if (radial > 6.3) { foe.position.x *= 6.3 / radial; foe.position.z *= 6.3 / radial; }
+        if (defeated > 0) {
+          defeated = Math.max(0, defeated - dt); foe.rotation.z = Math.min(Math.PI / 2, (1.3 - defeated) * 2);
+          if (!defeated) { hpFoe = 10; foe.rotation.z = 0; foe.position.set(Math.sin(t) * 3, 0, -Math.cos(t) * 3 - 1); phase = 'idle'; phaseT = 1.6; enemyReady = false; }
+        }
+        if (!defeated && phase !== 'strike' && phase !== 'wind' && dist > 0.01) {
+          const toward = toYou.clone().normalize(), strafe = new THREE.Vector3(toward.z, 0, -toward.x);
+          const advance = dist > 1.9 ? style.speed : dist < 1.2 ? -0.65 : 0;
+          foe.position.addScaledVector(toward, dt * advance).addScaledVector(strafe, dt * Math.sin(t * 0.8) * 0.3);
+          legs.forEach((leg, i) => leg.rotation.x = Math.sin(t * 7 + i * Math.PI) * (advance ? 0.16 : 0.04));
+          if ((stepT -= dt) < 0 && advance) { stepT = 0.5; audio.noise({ dur: 0.07, freq: 300, vol: 0.12, echo: true }); }
+        }
+        if (phase !== 'idle') foeShield.position.y = 1.25 + guardSide * 0.15;
+        if (phase === 'idle' && !defeated) {
+          const target = foe.worldToLocal(tip.clone());
+          const smoothing = 1 - Math.exp(-dt * 3);
+          foeShield.position.x += (THREE.MathUtils.clamp(target.x, -0.42, 0.08) - foeShield.position.x) * smoothing;
+          foeShield.position.y += (THREE.MathUtils.clamp(target.y, 1.05, 1.55) - foeShield.position.y) * smoothing;
+        }
 
         // ataque do oponente: aviso brilhante -> golpe
         phaseT -= dt;
-        if (phase === 'idle' && phaseT < 0 && dist < 2.4) { phase = 'wind'; phaseT = 0.9; guardSide = Math.random() < 0.5 ? 1 : -1; }
-        if (phase === 'wind') { foeArm.rotation.x = -1.2 * (1 - phaseT / 0.9); glowMat.opacity = 0.8 * (1 - phaseT / 0.9); if (phaseT < 0) { phase = 'strike'; phaseT = 0.25; } }
-        if (phase === 'strike') {
-          foeArm.rotation.x = -1.2 + 2.2 * (1 - phaseT / 0.25); glowMat.opacity = 0.3;
+        if (!defeated && phase === 'idle' && phaseT < 0 && dist < 2.4) { phase = 'wind'; phaseT = style.wind; guardSide = Math.random() < 0.5 ? 1 : -1; }
+        if (!defeated && phase === 'wind') { foeArm.rotation.x = -1.2 * (1 - phaseT / style.wind); foeArm.rotation.z = guardSide * 0.35; glowMat.opacity = 0.8 * (1 - phaseT / style.wind); if (phaseT < 0) { phase = 'strike'; phaseT = style.strike; strikeResolved = false; } }
+        previousEnemyTip.copy(enemyTip); foe.updateMatrixWorld(true); enemyTip.set(0, 0.93, 0).applyMatrix4(foeSword.matrixWorld);
+        if (!enemyReady || defeated) previousEnemyTip.copy(enemyTip); enemyReady = true;
+        if (!defeated && phase === 'strike') {
+          foeArm.rotation.x = -1.2 + 2.2 * (1 - phaseT / style.strike); glowMat.opacity = 0.3;
+          foe.updateMatrixWorld(true); enemyTip.set(0, 0.93, 0).applyMatrix4(foeSword.matrixWorld);
+          playerBox.min.set(eye.x - 0.23, eye.y - 1.3, eye.z - 0.23); playerBox.max.set(eye.x + 0.23, eye.y + 0.15, eye.z + 0.23);
+          playerShieldBox.setFromObject(shield).expandByScalar(0.035); playerSwordBox.setFromObject(sword).expandByScalar(0.025);
+          const blocked = segmentIntersectsBox(previousEnemyTip, enemyTip, playerShieldBox) || segmentIntersectsBox(previousEnemyTip, enemyTip, playerSwordBox);
+          if (!strikeResolved && blocked) { strikeResolved = true; audio.metal(); impact(enemyTip, true); tremble = 0.35; feedback = 'Defesa! Contra-ataque agora.'; feedbackTime = 1; }
+          else if (!strikeResolved && segmentIntersectsBox(previousEnemyTip, enemyTip, playerBox)) { strikeResolved = true; hpYou--; audio.thud(); vignette.material.opacity = 0.45; feedback = 'Atingido. Levante o escudo ou recue.'; feedbackTime = 1; }
           if (phaseT < 0) {
-            const strikeP = foe.position.clone().add(new THREE.Vector3(0, 1.3, 0)).addScaledVector(tmp.copy(eye).sub(foe.position).setY(0).normalize(), 0.9);
-            const blocked = shield.position.distanceTo(strikeP) < 0.45 || sword.position.distanceTo(strikeP) < 0.4;
-            if (blocked) { audio.metal(); impact(strikeP, true); tremble = 0.35; }
-            else { hpYou--; audio.thud(); vignette.material.opacity = 0.45; }
             phase = 'idle'; phaseT = 1.6 + Math.random() * 1.4; glowMat.opacity = 0; foeArm.rotation.x = 0;
           }
         }
@@ -129,22 +180,22 @@ export default {
         foe.updateMatrixWorld(true);
         shieldBox.setFromObject(foeShield).expandByScalar(0.05);
         foeBox.setFromObject(torso).union(new THREE.Box3().setFromObject(head));
-        const swinging = !swordP?.uiBusy && !swordP?.stale && (tipSpeed > 1.6 || swinging_input);
-        if (hitCd < 0 && swinging) {
+        const swinging = !swordP?.uiBusy && !swordP?.stale && tipSpeed > 1.6;
+        if (!defeated && hitCd < 0 && swinging) {
           if (segmentIntersectsBox(prevTip, tip, shieldBox) || shieldBox.containsPoint(sword.position.clone().lerp(tip, 0.6))) {
             audio.metal(); impact(tip, true); tremble = 0.4; hitCd = 0.35;
             feedback = 'Escudo bloqueou! Ataque pelo outro lado.'; feedbackTime = 0.8;
-          } else if (segmentIntersectsBox(prevTip, tip, foeBox) || foeBox.containsPoint(sword.position.clone().lerp(tip, 0.6)) || (swinging_input && input.source !== 'hand' && dist < 2.0)) {
+          } else if (segmentIntersectsBox(prevTip, tip, foeBox) || foeBox.containsPoint(sword.position.clone().lerp(tip, 0.6))) {
             hpFoe--; hitCd = 0.45; audio.noise({ dur: 0.12, freq: 700, vol: 0.3, echo: true }); audio.thud(); impact(tip, false);
             feedback = 'Golpe acertou!'; feedbackTime = 0.8;
-            foe.position.addScaledVector(tmp.copy(foe.position).sub(eye).setY(0).normalize(), 0.35);
+            foeVelocity.addScaledVector(tmp.copy(foe.position).sub(eye).setY(0).normalize(), Math.min(3.5, 0.6 + tipSpeed * 0.2));
           }
         }
-        if (hpFoe <= 0) { wins++; audio.success(); hpFoe = 10; hpYou = Math.min(10, hpYou + 3); foe.position.set(Math.sin(t) * 3, 0, -Math.cos(t) * 3 - 1); }
-        if (hpYou <= 0) { hpYou = 10; hpFoe = 10; rig.position.set(0, 0, 0); foe.position.set(0, 0, -3); }
+        if (hpFoe <= 0 && !defeated) { wins++; audio.success(); defeated = 1.3; hpYou = Math.min(10, hpYou + 3); glowMat.opacity = 0; feedback = 'Gladiador derrotado'; feedbackTime = 1.3; }
+        if (hpYou <= 0) { hpYou = 10; hpFoe = 10; defeated = 0; phase = 'idle'; phaseT = 1.8; foe.rotation.z = 0; foeVelocity.set(0, 0, 0); rig.position.set(0, 0, 0); foe.position.set(0, 0, -3); enemyReady = false; }
         sparks.update(dt); sand.update(dt);
         const bar = (n) => '█'.repeat(Math.max(0, n)) + '░'.repeat(Math.max(0, 10 - n));
-        ctx.hud(`Você ${bar(hpYou)}  Oponente ${bar(hpFoe)}`, feedbackTime > 0 ? feedback : `Vitórias ${wins} · bloqueie quando a espada dele brilhar`);
+        ctx.hud(`Você ${bar(hpYou)}  ${style.name} ${bar(hpFoe)}`, feedbackTime > 0 ? feedback : `Vitórias ${wins} · bloqueie quando a espada dele brilhar`);
       },
     };
   },

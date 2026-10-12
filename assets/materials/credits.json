@@ -1,0 +1,44 @@
+[
+  {
+    "asset": "asphalt_01",
+    "source": "https://polyhaven.com/a/asphalt_01",
+    "download": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/asphalt_01/asphalt_01_diff_1k.jpg",
+    "license": "CC0",
+    "licenseUrl": "https://polyhaven.com/license"
+  },
+  {
+    "asset": "wood_floor_deck",
+    "source": "https://polyhaven.com/a/wood_floor_deck",
+    "download": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/wood_floor_deck/wood_floor_deck_diff_1k.jpg",
+    "license": "CC0",
+    "licenseUrl": "https://polyhaven.com/license"
+  },
+  {
+    "asset": "rock_boulder_cracked",
+    "source": "https://polyhaven.com/a/rock_boulder_cracked",
+    "download": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/rock_boulder_cracked/rock_boulder_cracked_diff_1k.jpg",
+    "license": "CC0",
+    "licenseUrl": "https://polyhaven.com/license"
+  },
+  {
+    "asset": "brown_mud",
+    "source": "https://polyhaven.com/a/brown_mud",
+    "download": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/brown_mud/brown_mud_diff_1k.jpg",
+    "license": "CC0",
+    "licenseUrl": "https://polyhaven.com/license"
+  },
+  {
+    "asset": "bark_brown_02",
+    "source": "https://polyhaven.com/a/bark_brown_02",
+    "download": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/bark_brown_02/bark_brown_02_diff_1k.jpg",
+    "license": "CC0",
+    "licenseUrl": "https://polyhaven.com/license"
+  },
+  {
+    "asset": "forest_floor",
+    "source": "https://polyhaven.com/a/forest_floor",
+    "download": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/forest_floor/forest_floor_diff_1k.jpg",
+    "license": "CC0",
+    "licenseUrl": "https://polyhaven.com/license"
+  }
+]

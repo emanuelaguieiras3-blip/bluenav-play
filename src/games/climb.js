@@ -48,7 +48,7 @@ export default {
     const mover = new GrabMover(ctx);
     let holding = null;
     const drag = {
-      start: (p) => { holding = true; mover.start(p); audio.noise({ dur: 0.06, freq: 1200, vol: 0.1 }); audio.tone({ freq: 140, dur: 0.06, vol: 0.06 }); },
+      start: (p) => { if (summit) return; holding = true; mover.start(p); audio.noise({ dur: 0.06, freq: 1200, vol: 0.1 }); audio.tone({ freq: 140, dur: 0.06, vol: 0.06 }); },
       move: () => {},
       end: (p) => { mover.stop(p); holding = mover.active || null; },
     };
@@ -66,7 +66,7 @@ export default {
 
     return {
       update(dt) {
-        if (mover.active) {
+        if (mover.active && !summit) {
           mover.update(null, dt, 1.0);
           // fica sempre perto da parede, sem atravessar
           rig.position.z = THREE.MathUtils.clamp(rig.position.z, -0.25, 0.6);
@@ -77,7 +77,7 @@ export default {
         const h = rig.position.y;
         maxH = Math.max(maxH, h);
         if (!summit && h > TOPY - 1.4) {
-          summit = true; audio.success();
+          summit = true; audio.success(); mover.stop();
           rig.position.set(0, TOPY, WALLZ - 2.5);
           ctx.teleport({ enabled: true, walk: true, floorY: TOPY, check: (p) => Math.abs(p.x) < 6.5 && p.z < WALLZ - 0.6 && p.z > WALLZ - 10 });
         }

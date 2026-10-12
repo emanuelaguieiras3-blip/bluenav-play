@@ -2,6 +2,7 @@ import { chromium } from '@playwright/test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { GAMES } from '../src/games/index.js';
 
 const browser = await chromium.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true,
   args: ['--enable-unsafe-swiftshader', '--use-angle=swiftshader'] });
@@ -50,31 +51,46 @@ try {
       for (let i = 0; i < 18; i++) step();
       checks.push({ id, held, afterRetouch: counts.get(mesh), distance: center.distanceTo(app.camera.getWorldPosition(new THREE.Vector3())) });
     }
-    for (const panel of ['library', 'quick']) {
-      app.menu.showPanel(panel); app.scene.updateMatrixWorld(true);
+    for (let page = 0; page < app.menu.libraryPageCount; page++) {
+      app.menu.showPanel('library'); app.menu.showPage(page); app.scene.updateMatrixWorld(true);
       const visible = menus.filter(mesh => app.ui._visible(mesh));
       for (let i = 0; i < visible.length; i++) {
-        counts.set(visible[i], 0); touch(visible[i], panel + '-' + i);
+        counts.set(visible[i], 0); touch(visible[i], `library-${page}-${i}`);
       }
+    }
+    app.menu.showLibrary('official'); app.scene.updateMatrixWorld(true);
+    const officialVisible = menus.filter(mesh => app.ui._visible(mesh));
+    for (let i = 0; i < officialVisible.length; i++) {
+      counts.set(officialVisible[i], 0); touch(officialVisible[i], `official-${i}`);
+    }
+    app.menu.showLibrary('own');
+    app.menu.showPanel('quick'); app.scene.updateMatrixWorld(true);
+    const quickVisible = menus.filter(mesh => app.ui._visible(mesh));
+    for (let i = 0; i < quickVisible.length; i++) {
+      counts.set(quickVisible[i], 0); touch(quickVisible[i], `quick-${i}`);
     }
     for (const mesh of menus) mesh.userData.ui.onClick = original.get(mesh);
     // Use the actual callback: a fingertip touch opens the quick settings panel.
-    app.menu.showPanel('library'); app.scene.updateMatrixWorld(true);
+    app.menu.showPanel('library'); app.menu.showPage(0); app.scene.updateMatrixWorld(true);
     const gear = app.menu.dockButtons.find(button => button.panel === 'quick').button.userData.body;
     const center = gear.getWorldPosition(new THREE.Vector3()), normal = new THREE.Vector3(0, 0, 1).transformDirection(gear.matrixWorld);
     const p = { id: 'real-settings', source: 'hand', main: true, stale: false, system: false, fingerAim: false,
       ray: new THREE.Ray(center.clone(), normal.clone().negate()), origin: center.clone(), pokeTip: center.clone().addScaledVector(normal, 0.05), pinch: false };
     app.ui.update(1 / 60, { pointers: [p] }); p.pokeTip.copy(center); app.ui.update(1 / 60, { pointers: [p] });
     const actualPanelOpened = app.menu.quick.visible && !app.menu.lib.visible;
+    app.menu.showPage(1);
+    const pagingWorks = app.menu.libraryPage === 1 && app.menu.libraryTiles.filter(tile => tile.visible).length === 9;
+    app.menu.showPage(0);
     app.menu.showPanel('library'); app.scene.updateMatrixWorld(true); app.stereo.render(app.scene, app.camera);
-    window.__menuContactReport = { checks, actualPanelOpened }; return window.__menuContactReport;
+    window.__menuContactReport = { checks, actualPanelOpened, pagingWorks }; return window.__menuContactReport;
   });
-  assert.equal(report.checks.length, 34); // 16 games + 7 dock buttons, then 4 settings + 7 dock buttons
+  assert.equal(report.checks.length, GAMES.length + 4 * 3 + 7 * 3 + 5 + 7 + 2 + 3 + 7);
   for (const check of report.checks) {
     assert.equal(check.held, 1, JSON.stringify(check)); assert.equal(check.afterRetouch, 2, JSON.stringify(check));
     assert.ok(check.distance < 0.9, JSON.stringify(check));
   }
   assert.equal(report.actualPanelOpened, true); assert.deepEqual(errors, []);
+  assert.equal(report.pagingWorks, true);
   await mkdir('artifacts/menu', { recursive: true });
   await page.screenshot({ path: 'artifacts/menu/library.png' });
   await page.evaluate(() => { const a = window.__app; a.menu.showPanel('quick'); a.menu.update(1); a.scene.updateMatrixWorld(true); a.stereo.render(a.scene, a.camera); });

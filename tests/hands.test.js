@@ -69,6 +69,18 @@ test('finger contact fires once, rearms on retreat and rejects rear entry', () =
   c.reset(); assert.equal(c.update('button', 0.05), false);
 });
 
+test('Gemini calibrates only bounded touch tolerances and never rearms contact', () => {
+  const contact = new FingerContact();
+  assert.equal(contact.calibrate({ marginMm: 7, releaseMm: 35 }, 0.9), true);
+  assert.equal(contact.update('button', -0.006), true);
+  assert.equal(contact.calibrate({ marginMm: 8, releaseMm: 40 }, 1), false);
+  assert.equal(contact.update('button', 0), false);
+  contact.update('button', -0.04);
+  for (const value of [{ marginMm: 100, releaseMm: 35 }, { marginMm: NaN, releaseMm: 35 }, { marginMm: 7, releaseMm: 5 }]) assert.equal(contact.calibrate(value, 0.9), false);
+  assert.equal(contact.calibrate({ marginMm: 4, releaseMm: 30 }, 0.5), false);
+  assert.equal(contact.update('button', 0), true);
+});
+
 function appFixture() {
   const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera();
   scene.add(camera); camera.updateMatrixWorld();
@@ -131,6 +143,13 @@ test('stale hand cannot press a button', () => {
   f.ui.update(1 / 60, f.input); assert.equal(f.clicks(), 0);
 });
 
+test('moving a pointing hand toward a distant ray target does not click', () => {
+  const f = uiFixture(); f.p.pokeTip = null; f.p.fingerAim = true;
+  f.p.tipDepth = 0.3; f.ui.update(1 / 60, f.input);
+  f.p.tipDepth = 0.4; f.ui.update(1 / 60, f.input);
+  assert.equal(f.clicks(), 0);
+});
+
 test('fast touch from outside proximity range fires once even before the button had contact', () => {
   const f = uiFixture();
   f.p.pokeTip.z = -0.29; f.ui.update(1 / 60, f.input);
@@ -169,8 +188,8 @@ for (const hz of [60, 90, 120]) test(`60 FPS limiter preserves rate on ${hz} Hz 
   assert.ok(Math.abs(frames - 180) <= 2, `${frames} frames in 3 seconds`);
 });
 
-test('all 16 games have one-hand and two-hand instructions', () => {
-  assert.equal(GAMES.length, 16);
+test('all games have one-hand and two-hand instructions', () => {
+  assert.equal(new Set(GAMES.map(g => g.id)).size, GAMES.length);
   for (const game of GAMES) assert.ok(HAND_CONTROLS[game.id]?.every((text) => text.length > 10));
 });
 

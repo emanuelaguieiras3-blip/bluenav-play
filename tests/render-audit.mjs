@@ -46,7 +46,7 @@ try {
     console.error('Startup diagnostics:', JSON.stringify({ errors, state: await page.evaluate(() => ({ app: !!window.__app, loading: window.__app?.loading, game: window.__app?.gameId, body: document.body.innerText.slice(0, 1000) })) }));
     throw error;
   }
-  for (const game of GAMES) {
+  for (const game of GAMES.filter(game => !process.argv[4] || game.id === process.argv[4])) {
     console.log(`Loading ${game.id}`);
     await page.evaluate(async (id) => {
       const app = window.__app;
@@ -63,6 +63,15 @@ try {
       app.env.update();
       app.renderer.render(app.scene, app.camera);
     }, game.id);
+    if (game.id === 'universe' && process.argv[5]) await page.evaluate(kind => {
+      const app = window.__app;
+      app.game.preset(kind);
+      if (kind === 'impact') {
+        for (let i = 0; i < 240 && !app.game.state.impactSeen; i++) app.game.update(1 / 60, i / 60, app.input);
+        for (let i = 0; i < 15; i++) app.game.update(1 / 60, i / 60, app.input);
+      } else app.game.update(1 / 60, 0, app.input);
+      app.scene.updateMatrixWorld(true); app.renderer.render(app.scene, app.camera);
+    }, process.argv[5]);
     const pauseCheck = await page.evaluate(() => {
       const app = window.__app, before = app.gameTime;
       app.menu.toggle(true); app.perf.capFps = 0; app.loop(performance.now());
@@ -73,6 +82,7 @@ try {
     if (!pauseCheck.paused || !pauseCheck.resumed) throw new Error(`${game.id}: menu pause/resume failed`);
     const report = await page.evaluate(() => {
       const app = window.__app;
+      app.menu.toggle(false); app.menu.update(1);
       app.renderer.render(app.scene, app.camera);
       const programs = app.renderer.info.programs || [];
       return { id: app.gameId, calls: app.renderer.info.render.calls, triangles: app.renderer.info.render.triangles,

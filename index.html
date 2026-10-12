@@ -21,13 +21,14 @@
 <body>
   <div id="start">
     <div class="card">
-      <div class="logo"><span class="dot"></span>BlueNav <b>Play</b></div>
+      <div class="logo"><img src="assets/bluenav-mark.svg" width="28" height="28" alt="">BlueNav <b>Play</b></div>
       <p class="tag">Seus jogos, suas músicas e suas mãos.<br>VR no navegador para óculos de celular.</p>
       <div class="buttons">
         <button id="btn-xr" class="primary" hidden>Entrar em VR</button>
         <button id="btn-cardboard" class="primary">Óculos de celular (VR Box)</button>
         <button id="btn-rhythm">Ritmo de Luz · escolher música</button>
         <button id="btn-flat">Tela normal</button>
+        <a class="vespera-link" href="vespera-rpg2/">Jogar Véspera RPG2</a>
       </div>
       <label class="check"><input type="checkbox" id="chk-hands" checked> Rastrear as mãos com a câmera</label>
       <label class="check"><input type="checkbox" id="chk-gemini" checked> Calibração das mãos com Gemini</label>
@@ -41,6 +42,10 @@
           <li><b>Jogos:</b> botão ? mostra comandos para uma ou duas mãos. Azul indica alvo; verde confirma clique.</li>
           <li><b>Menu:</b> olhe para a palma da mão e pince. Pince e segure para recentralizar.</li>
           <li><b>Andar:</b> feche a mão esquerda (ou a única mão) e olhe na direção desejada. Abra a mão para parar.</li>
+          <li><b>Joystick VR:</b> esquerdo anda; direito gira 30°. Funciona nos jogos com caminhada.</li>
+          <li><b>Controle VR Box:</b> pareie pelo Bluetooth do aparelho. Modo gamepad: joystick anda, botão A seleciona. Modo teclado: ↑/↓ anda, ←/→ gira, Enter seleciona.</li>
+          <li><b>Mãos no headset:</b> WebXR usa juntas nativas quando o aparelho oferece hand tracking. VR Box usa câmera.</li>
+          <li><b>Objetos físicos:</b> Ajustes rápidos → Objetos físicos abre uma bancada para pegar, lançar e empilhar em qualquer jogo.</li>
           <li><b>YouTube:</b> o vídeo fica na janela. Use pinça nos controles para pausar, avançar e ajustar volume. Arraste a barra inferior para mover.</li>
           <li>Sem câmera: olhe para o botão por 0,65s ou toque na tela. No computador: clique, botão direito gira a visão, WASD anda, M abre o menu.</li>
         </ul>

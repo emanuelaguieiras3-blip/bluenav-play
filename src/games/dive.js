@@ -82,18 +82,20 @@ export default {
     const mover = new GrabMover(ctx);
     const drift = new THREE.Vector3();
     const water = audio.noiseLoop({ freq: 220, q: 0.5, type: 'lowpass', vol: 0.08 });
-    let beatT = 1;
+    let beatT = 1, lastRig = null;
     const surface = new THREE.Color('#1a7fa6'), deep = new THREE.Color('#05213a');
 
     return {
       update(dt, t) {
         // nadar: segure (pinça/toque) e puxe a água; o corpo desliza leve, sem cair
+        // Stroke speed is the hand relative to the body: the glide itself is not a stroke.
+        const rigVelocity = lastRig && dt > 0 ? rig.position.clone().sub(lastRig).divideScalar(dt) : new THREE.Vector3();
         for (const p of ctx.pointers()) {
           if (p.source === 'hand') {
             // mão fechada (pinça) agarra a água e puxa; mão aberta dando braçada empurra
             if (p.pinch && !p.uiBusy) { if (!mover.holding(p)) mover.start(p); }
             else if (mover.holding(p)) mover.stop(p);
-            const v = p.vel.clone().applyQuaternion(rig.quaternion.clone().invert());
+            const v = p.vel.clone().sub(rigVelocity);
             if (!p.pinch && v.length() > 0.45) drift.addScaledVector(v, -1.6 * dt); // braçada: corpo vai para o lado oposto
           } else if (p.pinch && !p.uiBusy) drift.addScaledVector(p.ray.direction, dt * 0.9); // toque/clique: nada para onde olha
         }
@@ -102,6 +104,7 @@ export default {
         drift.multiplyScalar(Math.exp(-1.1 * dt));
         rig.position.y = THREE.MathUtils.clamp(rig.position.y, SEABED - 1.2, 3.5);
         rig.position.x = THREE.MathUtils.clamp(rig.position.x, -40, 40); rig.position.z = THREE.MathUtils.clamp(rig.position.z, -40, 40);
+        lastRig = (lastRig || new THREE.Vector3()).copy(rig.position);
 
         // mais fundo: mais escuro e mais silencioso
         const depth = THREE.MathUtils.clamp((3.5 - rig.position.y) / 9, 0, 1);

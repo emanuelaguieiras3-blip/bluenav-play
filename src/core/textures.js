@@ -1,4 +1,4 @@
-// Texturas procedurais desenhadas em canvas (nada é baixado).
+// Local CC0 photographic materials with procedural fallbacks.
 // Carregamento progressivo: gera 64px na hora e troca por 256px quando o navegador fica ocioso.
 import * as THREE from 'three';
 import { rng, clamp } from './util.js';
@@ -6,6 +6,11 @@ import { detectDevice } from './perf.js';
 
 const MAX = 256;
 const LOW = 64;
+const PHOTOS = {
+  asphalt: 'asphalt_01', road: 'asphalt_01', dirt: 'brown_mud', forestFloor: 'forest_floor',
+  bark: 'bark_brown_02', barkMoss: 'bark_brown_02', roughStone: 'rock_boulder_cracked', rockStrata: 'rock_boulder_cracked',
+  woodLight: 'wood_floor_deck', woodMedium: 'wood_floor_deck', tableWood: 'wood_floor_deck', blockWood: 'wood_floor_deck',
+};
 const RELIEF = new Map([
   ['asphalt', 0.008], ['road', 0.008], ['dirt', 0.012], ['bark', 0.015], ['barkMoss', 0.015],
   ['woodLight', 0.004], ['woodMedium', 0.005], ['bowWood', 0.002], ['leather', 0.004],
@@ -77,6 +82,9 @@ function dots(c, S, R, n, rmin, rmax, colorFn) {
 
 // ---------- definições ----------
 const DEFS = {
+  surfaceGrain: { repeat: [2, 2], draw(c, S, R) {
+    paint(c, S, (_x, _y, _i, o) => { const v = 239 + R() * 16; o[0] = o[1] = o[2] = v; });
+  } },
   asphalt: { repeat: [4, 4], draw(c, S, R) {
     const n = field(S, R, 8, 8, 5), p = field(S, R, 3, 3, 2);
     paint(c, S, (x, y, i, o) => {
@@ -229,6 +237,20 @@ const DEFS = {
       c.strokeStyle = `rgba(${g * 0.45},${g},${g * 0.32},.8)`; c.lineWidth = 0.8;
       c.beginPath(); c.moveTo(x, y); c.lineTo(x + (R() - 0.5) * 3, y - (2 + R() * 4) * S / 256); c.stroke();
     }
+  } },
+  snow: { repeat: [18, 18], draw(c, S, R) {
+    const n = field(S, R, 7, 7, 4);
+    paint(c, S, (x, y, i, o) => {
+      const v = 225 + n[i] * 25 + (R() - 0.5) * 7;
+      o[0] = v - 5; o[1] = v; o[2] = Math.min(255, v + 6);
+    });
+  } },
+  ice: { repeat: [8, 8], draw(c, S, R) {
+    const n = field(S, R, 5, 5, 4);
+    paint(c, S, (x, y, i, o) => {
+      const v = 160 + n[i] * 55 + (R() - 0.5) * 7;
+      o[0] = v - 17; o[1] = v + 10; o[2] = Math.min(255, v + 33);
+    });
   } },
   // ---- Construtor de Reinos (liso, aconchegante) ----
   blockStone: { draw(c, S, R) {
@@ -529,6 +551,8 @@ export class TexLib {
     this.pending = []; // texturas esperando a versão 256 px
     this.aniso = Math.min(4, renderer.capabilities.getMaxAnisotropy());
     this.detail = !detectDevice().mobile;
+    this.maxSize = detectDevice().mobile ? 128 : MAX;
+    this.photos = new Map(); this.photoJobs = [];
   }
 
   _canvas(S) { const c = document.createElement('canvas'); c.width = c.height = S; return c; }
@@ -551,7 +575,7 @@ export class TexLib {
       // Carregamento progressivo: melhora para 256px no tempo ocioso
       const job = () => {
         if (tex.userData.disposed || tex.userData.hi) return;
-        const size = this.detail && RELIEF.has(name) ? 512 : MAX;
+        const size = this.detail && RELIEF.has(name) ? 512 : this.maxSize;
         const hi = this._canvas(size);
         def.draw(hi.getContext('2d', { willReadFrequently: true }), size, rng(def.seed || name));
         tex.image = hi; tex.userData.hi = true; tex.dispose(); tex.needsUpdate = true;
@@ -563,8 +587,32 @@ export class TexLib {
     }
     tex.userData.owner = opt.owner || 'game';
     this.cache.set(key, tex);
+    if (PHOTOS[name] && typeof Image !== 'undefined') {
+      const size = this.detail ? 512 : this.maxSize, asset = PHOTOS[name];
+      let imagePromise = this.photos.get(asset);
+      if (!imagePromise) {
+        imagePromise = new Promise(resolve => {
+          const image = new Image(); image.onload = () => resolve(image); image.onerror = () => resolve(null);
+          image.src = new URL(`../../assets/materials/${asset}-${size}.jpg`, import.meta.url).href;
+        });
+        this.photos.set(asset, imagePromise);
+      }
+      const job = imagePromise.then(image => {
+        if (!image || tex.userData.disposed) return;
+        const canvas = this._canvas(size), context = canvas.getContext('2d'); context.drawImage(image, 0, 0, size, size);
+        if (name === 'road') {
+          context.fillStyle = '#e1dfd5';
+          for (const x of [0.045, 0.915]) context.fillRect(x * size, 0, size * 0.035, size);
+        }
+        tex.image = canvas; tex.userData.hi = true; tex.userData.photographic = asset; tex.dispose(); tex.needsUpdate = true;
+        if (tex.userData.relief) this._updateRelief(tex, canvas, key, name, opt);
+      });
+      this.photoJobs.push(job);
+    }
     return tex;
   }
+
+  async prepare() { await Promise.all(this.photoJobs.splice(0)); }
 
   _updateRelief(tex, source, key, name, opt) {
     const height = this._canvas(source.width), context = height.getContext('2d');

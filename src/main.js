@@ -1,16 +1,17 @@
 import { App } from './app.js';
+import { CONFIG } from '../config.js';
 
 const $ = (id) => document.getElementById(id);
 const status = (t) => { $('status').textContent = t; };
 let app = null;
 
-async function go(mode) {
+async function go(mode, initialGame = null) {
   try {
     status('Iniciando…');
     if (!app) app = new App();
     $('start').classList.add('hidden');
     window.__app = app; // depuração
-    await app.start(mode, { hands: $('chk-hands').checked, gemini: $('chk-gemini').checked, onStatus: status });
+    await app.start(mode, { hands: $('chk-hands').checked, gemini: $('chk-gemini').checked, onStatus: status, initialGame });
     return app;
   } catch (e) {
     console.error(e);
@@ -23,15 +24,20 @@ $('btn-cardboard').addEventListener('click', () => go('cardboard'));
 $('btn-flat').addEventListener('click', () => go('flat'));
 $('btn-xr').addEventListener('click', () => go('xr'));
 $('btn-rhythm').addEventListener('click', async () => {
-  const running = await go('cardboard');
+  const running = await go('cardboard', 'rhythm');
   if (!running) return;
-  await running.loadGame('rhythm'); running.menu.toggle(false); running.game?.chooseMusic?.();
+  running.menu.toggle(false); running.game?.chooseMusic?.();
 });
 
 if (navigator.xr?.isSessionSupported) {
   navigator.xr.isSessionSupported('immersive-vr').then((ok) => { $('btn-xr').hidden = !ok; }).catch(() => {});
 }
 if (!matchMedia('(pointer: coarse)').matches) $('chk-hands').checked = false;
+if (!CONFIG.GEMINI_API_KEY && !CONFIG.GEMINI_PROXY_URL) {
+  $('chk-gemini').checked = false;
+  $('chk-gemini').disabled = true;
+  $('chk-gemini').parentElement.title = 'Configure GEMINI_PROXY_URL para ativar a calibração Gemini.';
+}
 
 // ?auto=flat&game=racing — abre direto (útil para testar)
 const auto = new URLSearchParams(location.search).get('auto');

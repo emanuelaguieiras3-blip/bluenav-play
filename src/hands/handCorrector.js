@@ -2,6 +2,7 @@
 // as regras do "corretor BlueNav Play": suavização, validação anatômica e gestos estáveis.
 // Saída idêntica ao formato pedido: { pontosCorrigidos, gesto, confianca }.
 import { CONFIG } from '../../config.js';
+import { touchProfile } from './fingerContact.js';
 
 export const BONES = [
   [0, 1], [1, 2], [2, 3], [3, 4],
@@ -49,6 +50,7 @@ export class HandCorrector {
     this.shape = 'indefinida';
     this.palmFacing = 0;
     this.frames = 0;
+    this.touchProfile = null;
   }
 
   // raw: 21 pontos [x,y,z] em metros (espaço da câmera); dt em s; score: confiança do MediaPipe
@@ -244,6 +246,12 @@ export class HandCorrector {
   }
 
   // Calibração vinda do Gemini (pontos corrigidos de uma janela de frames)
+  applyTouchReference(value, confidence) {
+    const profile = touchProfile(value, confidence);
+    if (!profile) return false;
+    this.touchProfile = profile; return true;
+  }
+
   applyReference(points, confianca) {
     if (!this.boneLen || !Array.isArray(points) || points.length !== 21 || !Number.isFinite(confianca) || confianca < 0.6 || confianca > 1) return false;
     const ok = points.every((p) => Array.isArray(p) && p.length === 3 && p.every(Number.isFinite));

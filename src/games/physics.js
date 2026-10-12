@@ -1,5 +1,6 @@
 // 🧪 LABORATÓRIO DE FÍSICA — Leis que Você Toca
 import { std, glowTexture, phys } from './common.js';
+import { RigidWorld } from './rigidWorld.js';
 
 export default {
   id: 'physics',
@@ -13,19 +14,23 @@ export default {
     const shadowOf = (r) => { const s = new THREE.Mesh(new THREE.PlaneGeometry(r * 3, r * 3).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false })); s.position.y = FLOOR + 0.001; root.add(s); return s; };
     const label = (t, x, y, z) => { const l = ctx.label(t, { w: 0.36, h: 0.06, bg: 'rgba(30,40,60,0.08)', fg: '#4a5568', size: 0.42 }); l.position.set(x, y, z); root.add(l); return l; };
 
+    // Tracked hands and controllers hold objects in the hand; gaze/mouse along the ray.
+    const reach = (p, distance) => p.source === 'hand' || p.source === 'xr' ? p.handPos.clone() : p.ray.origin.clone().addScaledVector(p.ray.direction, distance);
     // ---- bola de borracha ----
     const R = 0.05;
     const ball = new THREE.Mesh(new THREE.SphereGeometry(R, 32, 20), std({ map: tex.get('rubber'), roughness: 0.85 }));
     ball.position.set(-0.45, 1.3, -0.8); root.add(ball);
     const ballShadow = shadowOf(R);
-    const ballS = { v: new THREE.Vector3(), held: false, maxH: 0 };
+    const world = new RigidWorld({ floor: FLOOR, limit: 1 });
+    const ballBody = world.add(ball, { size: [R * 2, R * 2, R * 2], bounce: 0.72, friction: 0.65 });
+    const ballS = { v: ballBody.velocity, held: false, maxH: 0 };
     const trail = []; const trailMat = new THREE.MeshBasicMaterial({ color: '#7a8aa6', transparent: true, opacity: 0.4 });
     const trailGeo = new THREE.SphereGeometry(0.006, 6, 4);
     const ballLbl = label('Bola: solte para cair', -0.45, 1.55, -0.8);
     ctx.addUI(ball, { sound: false, drag: {
-      start: () => { ballS.held = true; },
-      move: (inp) => { ball.position.lerp(inp.ray.origin.clone().addScaledVector(inp.ray.direction, 0.75), 0.6); ballS.v.set(0, 0, 0); },
-      end: (inp) => { ballS.held = false; ballS.v.copy(inp.handVel).clampLength(0, 3); ballS.maxH = ball.position.y; },
+      start: () => { ballS.held = true; ballBody.held = 'drag'; },
+      move: (inp) => { ball.position.lerp(reach(inp, 0.75), 0.6); ballS.v.set(0, 0, 0); },
+      end: (inp) => { ballS.held = false; world.release(ballBody, inp && !inp.stale ? inp.vel : new THREE.Vector3()); ballS.v.clampLength(0, 3); ballS.maxH = ball.position.y; },
     } });
 
     // ---- mola com peso ----
@@ -50,7 +55,7 @@ export default {
       start: () => { spr.held = true; },
       move: (inp) => {
         // resistência aumenta conforme estica: o peso fica para trás da mão
-        const target = inp.ray.origin.clone().addScaledVector(inp.ray.direction, 0.9).y;
+        const target = reach(inp, 0.9).y;
         const stretch = anchor.y - spr.y - REST;
         const give = 1 / (1 + Math.max(0, stretch) * 6);
         spr.y += (THREE.MathUtils.clamp(target, anchor.y - 0.8, anchor.y - 0.12) - spr.y) * 0.25 * give; spr.v = 0;
@@ -83,17 +88,12 @@ export default {
 
     let bounceSnd = 0;
     return {
+      world,
       update(dt) {
         // bola: queda com aceleração natural, quica cada vez mais baixo, para
         if (!ballS.held) {
-          ballS.v.y -= 9.8 * dt;
-          ball.position.addScaledVector(ballS.v, dt);
-          if (ball.position.y < FLOOR + R) {
-            ball.position.y = FLOOR + R;
-            if (Math.abs(ballS.v.y) > 0.3) { audio.thud(); bounceSnd++; }
-            ballS.v.y = Math.abs(ballS.v.y) > 0.3 ? -ballS.v.y * 0.72 : 0;
-            ballS.v.x *= 0.92; ballS.v.z *= 0.92;
-          }
+          const previousV = ballS.v.y; world.update(dt);
+          if (previousV < -0.3 && ballS.v.y >= 0) { audio.thud(); bounceSnd++; }
           const d = ball.position.clone().setY(0).sub(new THREE.Vector3(-0.45, 0, -0.8));
           if (d.length() > 0.6) { d.setLength(0.6); ball.position.x = -0.45 + d.x; ball.position.z = -0.8 + d.z; ballS.v.x *= -0.5; ballS.v.z *= -0.5; }
           if (ballS.v.lengthSq() > 0.05 && Math.random() < 0.6) { const p = new THREE.Mesh(trailGeo, trailMat); p.position.copy(ball.position); root.add(p); trail.push(p); if (trail.length > 70) trail.shift().removeFromParent(); }

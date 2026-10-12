@@ -125,7 +125,7 @@ export default {
             let held = holds.get(ip.id);
             const taken = new Set(holds.values());
             if (ip.pinch && !held) { held = pieces.find((p) => !taken.has(p) && p.position.distanceTo(h) < 0.12) || null; if (held) holds.set(ip.id, held); }
-            if (!ip.pinch && held) { if (held.position.distanceTo(potCenter) < 0.18) { held.userData.inPot = true; held.position.copy(potCenter).add(new THREE.Vector3((Math.random() - 0.5) * 0.15, 0, (Math.random() - 0.5) * 0.15)); audio.noise({ dur: 0.1, freq: 600, vol: 0.15 }); } holds.delete(ip.id); held = null; }
+            if (!ip.pinch && held) { if (held.position.distanceTo(potCenter) < 0.18) { held.userData.inPot = true; held.position.copy(potCenter).add(new THREE.Vector3((Math.random() - 0.5) * 0.15, 0, (Math.random() - 0.5) * 0.15)); audio.noise({ dur: 0.1, freq: 600, vol: 0.15 }); } else held.position.y = H + 0.045; holds.delete(ip.id); held = null; }
             if (held) held.position.lerp(h, Math.min(1, dt * 15));
           }
           if (input.pinchDown && input.source !== 'hand' && !holds.size) for (const p of pieces) { p.userData.inPot = true; p.position.copy(potCenter).add(new THREE.Vector3((Math.random() - 0.5) * 0.15, 0, (Math.random() - 0.5) * 0.15)); }

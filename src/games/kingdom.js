@@ -93,8 +93,10 @@ export default {
             const p = h.point; cell = [Math.round(p.x / S), 0, Math.round((p.z + 1.3) / S)];
             if (pMode === 'quebrar') cell = null;
           } else {
-            const c = h.object.userData.cell, n = h.face.normal;
-            cell = pMode === 'colocar' ? [c[0] + Math.round(n.x), c[1] + Math.round(n.y), c[2] + Math.round(n.z)] : c;
+            // Rounded edges have diagonal normals; snap to the dominant face only.
+            const c = h.object.userData.cell, n = h.face.normal, axis = [Math.abs(n.x), Math.abs(n.y), Math.abs(n.z)];
+            const k = axis.indexOf(Math.max(...axis)), step = [0, 0, 0]; step[k] = Math.sign([n.x, n.y, n.z][k]);
+            cell = pMode === 'colocar' ? [c[0] + step[0], c[1] + step[1], c[2] + step[2]] : c;
           }
           if (!cell) return;
           ghost.visible = true; ghost.position.copy(toWorld(...cell));

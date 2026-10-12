@@ -9,7 +9,7 @@ export default {
     const R = 26;
     ctx.teleport({ enabled: true, walk: true, check: (p) => Math.hypot(p.x, p.z) < R - 1 && !trunks.some((t) => Math.hypot(t.x - p.x, t.z - p.z) < 0.8) });
 
-    root.add(new THREE.Mesh(new THREE.CircleGeometry(R + 20, 48).rotateX(-Math.PI / 2), std({ map: tex.get('forestFloor'), color: '#9a8a7a', roughness: 1 })));
+    root.add(new THREE.Mesh(new THREE.PlaneGeometry((R + 20) * 2, (R + 20) * 2, 48, 48).rotateX(-Math.PI / 2), std({ map: tex.get('forestFloor'), color: '#9a8a7a', roughness: 1 })));
     // lua fina
     const moon = new THREE.Mesh(new THREE.RingGeometry(3.2, 4, 40, 1, -0.9, 1.8), new THREE.MeshBasicMaterial({ color: '#dfe6ff', fog: false, side: THREE.DoubleSide }));
     moon.position.set(-60, 70, -120); moon.lookAt(0, 0, 0); root.add(moon);

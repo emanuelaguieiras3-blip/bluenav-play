@@ -31,7 +31,7 @@ export default {
     let twist = null;         // giro com as duas mãos
 
     const build = () => {
-      for (const p of pieces) { ctx.app.ui.remove(p.mesh); p.mesh.removeFromParent(); p.mesh.geometry.dispose(); }
+      for (const p of pieces) { ctx.app.ui.remove(p.mesh); p.mesh.removeFromParent(); p.mesh.geometry.dispose(); p.mesh.material.dispose(); p.edges.geometry.dispose(); p.edges.material.dispose(); }
       pieces = []; grabs.clear(); solved = false; glowT = 0; holder.rotation.set(0.35, 0.5, 0);
       const L = LEVELS[level], off = (L.n - 1) / 2;
       L.pieces.forEach((cells, i) => {

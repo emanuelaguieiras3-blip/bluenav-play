@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: bluenav-network
+    runtime: node
+    buildCommand: npm ci --omit=dev
+    startCommand: npm run server:network
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NETWORK_ORIGINS
+        sync: false

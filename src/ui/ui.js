@@ -151,23 +151,29 @@ export class UI {
     // toque direto com o dedo (perto do painel o Quest troca o raio pelo dedo)
     let hit = null, poking = false, pokeClick = false;
     if (p.pokeTip && vis.length) {
+      s.contact.calibrate(p.hand?.touchProfile, p.hand?.confianca);
       const previousTip = s.prevTip?.clone();
       const eye = app.camera.getWorldPosition(new THREE.Vector3());
       const dir = p.pokeTip.clone().sub(eye).normalize();
       this.raycaster.set(p.pokeTip.clone().addScaledVector(dir, -0.06), dir);
       this.raycaster.far = 0.16;
-      let ph = this.raycaster.intersectObjects(vis, false)[0];
+      // Ignore grabbable geometry in the contact pass; it still receives rays.
+      const clickable = candidate => !!this._subFor(candidate)?.onClick;
+      let ph = this.raycaster.intersectObjects(vis, false).find(clickable);
       // Sweep the fingertip: a quick push must not pass through a thin button.
       if (s.prevTip) {
         const movement = p.pokeTip.clone().sub(s.prevTip), distance = movement.length();
         if (distance > 0.001 && distance < 0.2) {
           this.raycaster.set(s.prevTip, movement.divideScalar(distance));
           this.raycaster.far = distance + 0.004;
-          const swept = this.raycaster.intersectObjects(vis, false)[0];
+          const swept = this.raycaster.intersectObjects(vis, false).find(clickable);
           if (swept) ph = swept;
         }
       }
       if (!s.prevTip) s.prevTip = p.pokeTip.clone(); else s.prevTip.copy(p.pokeTip);
+      // Only clickable targets are poked. A fingertip resting on a grabbable
+      // object must not block the pinch that picks it up.
+      if (ph && !this._subFor(ph)?.onClick) ph = null;
       if (ph) {
         hit = ph; poking = true;
         const normal = ph.face.normal.clone().transformDirection(ph.object.matrixWorld);
@@ -217,18 +223,9 @@ export class UI {
           s.press = null;
         } else if (!p.pinch) s.press = null;
       }
-      // dedo apontando para o botão: "empurrar" o dedo para frente clica na hora
-      if (p.fingerAim && sub && sub.onClick && !s.press && !p.pinch) {
-        const now = performance.now();
-        if (s.tapKey !== key) { s.tap = []; s.tapKey = key; }
-        s.tap = (s.tap || []).filter((q) => now - q[0] < 180);
-        s.tap.push([now, p.tipDepth]);
-        const minD = Math.min(...s.tap.map((q) => q[1]));
-        if (s.tapArmed !== false && p.tipDepth - minD > 0.025) { s.tapArmed = false; this._fire(s, sub, hit.object); }
-        if (p.tipDepth < (s.tapRest ?? p.tipDepth) - 0.015 || s.tapArmed === undefined) s.tapArmed = true;
-        s.tapRest = s.tapArmed ? p.tipDepth : Math.max(s.tapRest ?? 0, p.tipDepth);
-      } else { s.tap = null; s.tapKey = null; s.tapArmed = undefined; s.tapRest = undefined; }
-      // parar o olhar (papelão sem mãos) ou o dedo em cima do botão por 0,65s
+      // Distant pointing uses pinch; moving the hand toward a distant ray hit
+      // is not a physical touch and must never click a library tile.
+      // Parar o olhar (papelão sem mãos) por 0,65s.
       if (gaze && sub && sub.onClick && !s.fired && !s.press) {
         s.dwellT += dt;
         if (s.dwellT >= (sub.dwell ?? CONFIG.DWELL_TIME)) this._fire(s, sub, hit.object);
