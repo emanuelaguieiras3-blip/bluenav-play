@@ -42,6 +42,7 @@ export const SCENE_PROPS = {
   cook: ['orange', 'orange', 'apple', 'apple', 'can'],
   tablegames: ['die', 'die', 'ball'],
   puzzle: ['ball', 'ball', 'crate'],
+  shiftworld: ['rock', 'rock', 'log', 'ball', 'crate'],
 };
 
 const _box = new THREE.Box3(), _size = new THREE.Vector3(), _p = new THREE.Vector3(), _d = new THREE.Vector3();

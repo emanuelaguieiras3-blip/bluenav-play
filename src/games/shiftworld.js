@@ -32,7 +32,9 @@ export default {
         const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.17, 1.5, 9), bark); trunk.position.y = 0.75; tree.add(trunk);
         const crown = new THREE.Mesh(new THREE.ConeGeometry(0.72 + (j % 3) * 0.1, 2.15, 10), crownBad.clone());
         crown.position.y = 2.0; crown.rotation.z = (j % 2 ? -1 : 1) * 0.85; tree.add(crown);
-        tree.position.set(Math.cos(angle) * r, 0, z + Math.sin(angle) * r); root.add(tree); trees.push(crown);
+        // Keep the 5.5 m path clear: a tree once spawned inside the player's head.
+        let tx = Math.cos(angle) * r; if (Math.abs(tx) < 3.4) tx = (Math.sign(tx) || 1) * (3.4 + (j % 3) * 0.4);
+        tree.position.set(tx, 0, z + Math.sin(angle) * r); root.add(tree); trees.push(crown);
       }
       for (let j = 0; j < 7; j++) {
         const a = j * 2.399, r = 2.2 + (j % 3) * 1.1;

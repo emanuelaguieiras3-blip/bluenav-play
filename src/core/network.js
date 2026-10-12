@@ -82,6 +82,10 @@ export class NetworkRoom {
     if (data.id === this.id || !Array.isArray(data.position)) return;
     let peer = this.peers.get(data.id);
     if (!peer) {
+      const custom = this.peerBuilder?.(data.id);
+      if (custom) { this.group.add(custom); peer = { mesh: custom, target: V(...data.position) }; this.peers.set(data.id, peer); custom.position.copy(peer.target); }
+    }
+    if (!peer) {
       const mesh = new THREE.Group();
       const mat = new THREE.MeshStandardMaterial({ color: '#69b5ec', roughness: 0.75 });
       const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.23, 1.0, 5, 12), mat); body.position.y = 0.83;
@@ -91,6 +95,12 @@ export class NetworkRoom {
       mesh.position.copy(peer.target);
     }
     peer.target.set(...data.position); peer.yaw = data.yaw;
+  }
+  // A game can replace the default avatar (for example with the player's look).
+  rebuildPeer(id) {
+    const peer = this.peers.get(id), mesh = peer && this.peerBuilder?.(id); if (!mesh) return;
+    mesh.position.copy(peer.mesh.position); mesh.rotation.copy(peer.mesh.rotation);
+    this.group.remove(peer.mesh); this.group.add(mesh); peer.mesh = mesh;
   }
   on(name, handler) {
     if (!this.handlers.has(name)) this.handlers.set(name, new Set());

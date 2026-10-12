@@ -53,6 +53,8 @@ canvas { display: block; position: fixed; inset: 0; }
 .logo .dot { width: 14px; height: 14px; border-radius: 50%; border: 3px solid var(--fg); }
 .tag { color: var(--muted); margin: 8px 0 28px; font-size: 15px; line-height: 1.45; }
 .buttons { display: flex; flex-direction: column; gap: 10px; }
+.vespera-link { display:block; padding:15px 18px; border:1px solid #a27f59; border-radius:999px; color:#f6e9ca; text-align:center; text-decoration:none; font-size:16px; font-weight:600; background:#30253a; }
+.vespera-link:hover, .vespera-link:focus-visible { background:#493553; outline:2px solid #c4a875; outline-offset:2px; }
 button {
   font: inherit; font-size: 16px; font-weight: 600; padding: 15px 18px; border-radius: 999px; cursor: pointer;
   border: 0; background: var(--surface); color: var(--fg);

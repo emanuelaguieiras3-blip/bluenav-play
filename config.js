@@ -8,7 +8,7 @@ export const CONFIG = {
   YOUTUBE_API_KEY: 'AIzaSyDSXIOjEANDneoIrngoc2jhQ72otNPBg3s',
   YOUTUBE_REGION: 'BR',
 
-  GEMINI_API_KEY: 'AQ.Ab8RN6IX-Z-vFd8-jPjiqahjn7OS_ZHMfySgNgZFRIPN5QbRWg',
+  GEMINI_API_KEY: '',
   // Modelos tentados em ordem (o primeiro que responder é mantido).
   GEMINI_MODELS: ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-flash-latest'],
   // Se preenchido, as chamadas vão para este endereço (POST com o mesmo corpo da API).

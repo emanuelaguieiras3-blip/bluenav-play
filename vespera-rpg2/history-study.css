@@ -1,0 +1,25 @@
+#vh-open-top { font-size:10px; font-weight:800; letter-spacing:.08em; color:#f6dfaa; border-color:#b7954a; }
+#vh-open-home { width:100%; margin-top:8px; }
+#vh-overlay[hidden] { display:none; }
+#vh-overlay { position:fixed; inset:0; z-index:1000; display:grid; place-items:center; padding:12px; background:#06110de8; }
+.vh-panel { width:min(760px,100%); max-height:calc(100dvh - 24px); overflow:auto; padding:clamp(16px,3vw,28px); border:2px solid #b7954a; border-radius:16px; background:#eadfc4; color:#26372b; box-shadow:0 24px 70px #000a; overscroll-behavior:contain; }
+.vh-panel header { display:flex; align-items:start; justify-content:space-between; gap:16px; border-bottom:1px solid #a98e65; padding-bottom:12px; }
+.vh-panel header small,.vh-mission>small { color:#825a2c; font-weight:900; letter-spacing:.12em; }
+.vh-panel h2 { margin:4px 0; font:700 clamp(24px,5vw,35px) Fraunces,Georgia,serif; }
+.vh-panel h3 { margin:7px 0; font:700 23px Fraunces,Georgia,serif; }
+.vh-panel h4 { margin:13px 0 5px; }
+.vh-panel p { line-height:1.5; }
+.vh-panel button { min-height:42px; border:1px solid #836e4b; border-radius:9px; padding:8px 12px; background:#faf2dc; color:#24362a; font-weight:800; }
+.vh-panel button:hover:not(:disabled),.vh-panel button:focus-visible { background:#d6c39b; }
+#vh-close { font-size:25px; line-height:1; }
+.vh-nav,.vh-hints { display:flex; align-items:center; gap:8px; }
+.vh-nav button,.vh-hints button { flex:1; }
+.vh-nav span { min-width:48px; text-align:center; font-weight:800; }
+.vh-mission { display:none; min-width:0; box-sizing:border-box; padding:14px 4px; }
+.vh-mission.vh-active { display:block; }
+.vh-answers { display:grid; gap:7px; margin:12px 0; }
+.vh-answers button { text-align:left; }
+.vh-done { display:inline-block; padding:3px 8px; border-radius:999px; background:#284f36; color:#fff; font-size:11px; font-weight:800; }
+.vh-done[hidden] { display:none; }
+.vh-feedback { min-height:22px; padding:9px; border-left:3px solid #9d742e; background:#f7efd9; }
+@media(max-width:700px) { #vh-open-top { padding:7px; font-size:9px; } .vh-panel { max-height:calc(100dvh - 12px); padding:14px; } .vh-hints { flex-wrap:wrap; } .vh-hints button { flex:1 1 30%; } }

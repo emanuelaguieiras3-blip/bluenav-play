@@ -1,6 +1,6 @@
 # BlueNav Play
 
-Salas por código e exigências para hospedagem: [NETWORK.md](NETWORK.md). A sincronização atual cobre presença e posição; as regras dos jogos ainda não são multiplayer.
+Salas por código e exigências para hospedagem: [NETWORK.md](NETWORK.md). Universe Sandbox compartilha sua simulação na sala; os outros jogos têm níveis diferentes de integração e a maioria sincroniza apenas presença e posição.
 
 Objetivo atual: criar jogos próprios que reproduzam o melhor possível as mecânicas
 de Gorilla Tag, BONELAB sandbox, Job Simulator, Pavlov VR e Beat Saber, com interface
@@ -12,6 +12,18 @@ Na Oficina de Trabalho, solte cada item na estação correspondente e toque no
 botão: carimbe documentos, pese pacotes e encha copos. Depois solte o item na bandeja com a
 etiqueta certa. Entregas sem preparo e estações erradas não contam. O modo pode
 ser jogado com uma ou duas mãos.
+
+**Praça BlueNav** (jogo social próprio, mecânicas no estilo de redes sociais VR
+como Rec Room, sem nome, arte ou mapas deles): dormitório com espelho que copia
+suas mãos, guarda-roupa (pele, roupa, chapéu, rosto) e garagem (4 carros, 12
+pinturas, 5 adesivos). Navegador com **500 salas geradas por semente**, sempre
+iguais por número: Corrida (3 voltas por anéis contra 3 carros com IA),
+Paintball (3×3 com bots, primeiro a 10), Parkour (plataformas fixas e móveis,
+braços estilo gorila, Espaço ou toque pula) e Encontro (praça com objetos
+físicos, pista de dança, visitantes e carro para dirigir). Concluir salas dá
+fichas para liberar visuais; tudo fica salvo no navegador. Em sala online, os
+amigos veem seu avatar e o anfitrião escolhe a sala para todos. Relógio na
+cintura volta ao dormitório ou recomeça a sala.
 
 Atualização de 11/10/2026: catálogo com 20 jogos. Novidades:
 
@@ -214,14 +226,14 @@ Tudo em `config.js` fica visível para quem abrir o site.
 
 ## Limitações conhecidas
 
-- Testes automatizados: `npm ci` e `npm test`. Cobrem rastreamento, contato, Gemini simulado, cadência e lógica/geometria dos 20 jogos com uma ou duas mãos. Canvas e áudio usam dublês nos testes de jogos; estes não validam imagem final, câmera física, WebXR ou FPS real. Use `?auto=flat&fakehand=two&game=rhythm&debug` para inspeção e F2 para FPS, inferência e estado Gemini. Valide câmera/FPS no aparelho com HTTPS.
+- Testes automatizados: `npm ci` e `npm test`. Cobrem rastreamento, contato, Gemini simulado, cadência e lógica/geometria do catálogo com uma ou duas mãos. Canvas e áudio usam dublês nos testes de jogos; estes não validam imagem final, câmera física, WebXR ou FPS real. Use `?auto=flat&fakehand=two&game=rhythm&debug` para inspeção e F2 para FPS, inferência e estado Gemini. Valide câmera/FPS no aparelho com HTTPS.
 
 - O player do YouTube é um iframe. O navegador não deixa desenhá-lo dentro da cena 3D, então ele abre numa camada por cima (lado a lado no modo papelão). No modo WebXR imersivo o vídeo não aparece.
 - Carregamento inicial: cerca de 40 KB do app + 166 KB do Three.js (gzip), ou seja, uns 206 KB. O modelo do MediaPipe (alguns MB) é baixado depois, só se o rastreamento de mãos estiver ligado.
 
 ## Controles de mãos e validação
 
-- Os 20 jogos mostram instruções para uma ou duas mãos e o gesto atual. O botão `?` oculta ou mostra o guia.
+- Os 25 jogos atuais mostram instruções para uma ou duas mãos e o gesto atual. O botão `?` oculta ou mostra o guia.
 - O toque direto detecta o percurso do dedo entre quadros. Cada contato gera um clique, com confirmação verde e som. Retire o dedo para clicar novamente.
 - A biblioteca e a barra ficam ao alcance da mão (aproximadamente 0,6 m). A profundidade é estimada com o campo de visão físico da câmera, independente da ampliação do passthrough. A perda de rastreamento exige recuar o dedo antes de um novo contato.
 - Ajustes rápidos abrem dentro do VR. O botão de câmera pode abrir o feed e alternar o mundo real; o painel informa se a calibração Gemini está ativa ou indisponível.
@@ -242,3 +254,11 @@ npm test
 ```
 
 No PowerShell com scripts bloqueados, use `npm.cmd install` e `npm.cmd test`. Os testes simulam respostas do Gemini, sem chamadas à API. A validação visual com câmera e a medição de FPS precisam ocorrer no aparelho real.
+
+## Véspera RPG2 e Universe Sandbox
+
+O Véspera está em [`vespera-rpg2/`](vespera-rpg2/) e pode ser aberto pela página inicial. Seu modo WebXR lê a partida original e projeta terreno, árvores, edifícios, criaturas, NPCs e jogadores numa cena espacial 3D. A simulação, as missões, a arte 2D e o salvamento continuam no motor original. Veja [`vespera-rpg2/VR_README.md`](vespera-rpg2/VR_README.md) para limites e controles.
+
+O **Universe Sandbox** começa com estrela, planeta e lua. Escolha um astro e pince para colocá-lo; os botões **Impacto** e **Maré** mostram eventos reproduzíveis. A física usa gravitação newtoniana com unidades reduzidas para uma cena VR. O impacto conserva massa e impulso, gera onda e detritos. A maré transfere matéria da estrela ao buraco negro e desenha filamentos ligados aos corpos. Isso é uma simulação estilizada e não calcula astrofísica em escala real.
+
+O Universe Sandbox sincroniza o estado físico pela sala online com simulação no anfitrião. A hospedagem de um servidor WebSocket persistente continua necessária para jogar pela internet; `render.yaml` e [`NETWORK.md`](NETWORK.md) preparam esse deploy. Os demais jogos ainda precisam de regras multiplayer específicas.

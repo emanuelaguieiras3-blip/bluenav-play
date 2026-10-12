@@ -27,6 +27,15 @@ export function stepTrail(state, controls, dt, mode) {
 
 export function gateResult(x, center, width = 1.75) { return Math.abs(x - center) <= width; }
 
+// Slalom poles are hinged at the base: a rider who brushes one knocks it over
+// and a spring stands it back up (damped oscillation).
+export function stepPole(pole, dt, k = 60, damping = 5) {
+  pole.velocity += (-k * pole.angle - damping * pole.velocity) * dt;
+  pole.angle = Math.max(-1.3, Math.min(1.3, pole.angle + pole.velocity * dt));
+  return pole;
+}
+export function hitPole(pole, side, speed) { pole.velocity += side * Math.min(14, 2 + speed * 0.6); pole.hits = (pole.hits || 0) + 1; return pole; }
+
 function height(s, mode) { return mode === 'ski' ? -s * 0.045 : 0; }
 
 export function createTrail(ctx, mode) {
@@ -62,22 +71,33 @@ export function createTrail(ctx, mode) {
   root.add(new THREE.Mesh(road, roadMat));
   const trunkGeo = new THREE.CylinderGeometry(0.11, 0.16, 1.5, 8), crownGeo = new THREE.ConeGeometry(0.8, 2.5, 8), rockGeo = new THREE.IcosahedronGeometry(0.5, 1);
   const rng = (n) => { const v = Math.sin(n * 93.17) * 43758.545; return v - Math.floor(v); };
-  for (let i = 0; i < (ctx.lowEnd ? 70 : 130); i++) {
+  // Instanced scenery: three draw calls instead of one or two per tree (stereo on phones).
+  const count = ctx.lowEnd ? 70 : 130, rocks = [], trees = [];
+  for (let i = 0; i < count; i++) {
     const s = 4 + rng(i + 11) * (LENGTH + 7), x = (8.4 + rng(i + 107) * 16) * (i % 2 ? -1 : 1);
     const y = height(s, mode), scale = 0.7 + rng(i + 39) * 0.9;
-    if (i % 6 === 0) { const rock = new THREE.Mesh(rockGeo, rockMat); rock.scale.set(scale * 1.3, scale * 0.8, scale); rock.position.set(x, y + 0.2, -s); root.add(rock); }
-    else { const tree = new THREE.Group(); const trunk = new THREE.Mesh(trunkGeo, trunkMat), crown = new THREE.Mesh(crownGeo, treeMat); trunk.position.y = 0.75; crown.position.y = 2.1; tree.add(trunk, crown); tree.position.set(x, y, -s); tree.scale.setScalar(scale); root.add(tree); }
+    (i % 6 === 0 ? rocks : trees).push({ x, y, z: -s, scale });
   }
-  const gates = [];
+  const place = (geometry, material, list, offsetY, scaleOf) => {
+    const mesh = new THREE.InstancedMesh(geometry, material, list.length), m = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), sc = new THREE.Vector3();
+    list.forEach((t, i) => mesh.setMatrixAt(i, m.compose(v.set(t.x, t.y + offsetY * t.scale, t.z), q, scaleOf(t, sc))));
+    mesh.computeBoundingSphere(); root.add(mesh); return mesh;
+  };
+  place(trunkGeo, trunkMat, trees, 0.75, (t, v) => v.setScalar(t.scale));
+  place(crownGeo, treeMat, trees, 2.1, (t, v) => v.setScalar(t.scale));
+  place(rockGeo, rockMat, rocks, 0.2 / 1, (t, v) => v.set(t.scale * 1.3, t.scale * 0.8, t.scale));
+  const gates = [], poles = [];
   const poleGeo = new THREE.CylinderGeometry(0.045, 0.05, 1.5, 10);
   for (let i = 0; i < GATES; i++) {
     const s = 15 + i * 10.5, x = Math.sin(i * 1.9) * 2.3, y = height(s, mode);
     const group = new THREE.Group();
     for (const side of [-1, 1]) {
-      const pole = new THREE.Mesh(poleGeo, side < 0 ? red : blue);
-      pole.position.set(x + side * 1.75, y + 0.75, -s); group.add(pole);
+      // Pivot at the base so the pole and its flag tip over together.
+      const pivot = new THREE.Group(); pivot.position.set(x + side * 1.75, y, -s); group.add(pivot);
+      const pole = new THREE.Mesh(poleGeo, side < 0 ? red : blue); pole.position.y = 0.75; pivot.add(pole);
       const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.3), side < 0 ? red : blue);
-      flag.position.set(x + side * 1.53, y + 1.28, -s); group.add(flag);
+      flag.material.side = THREE.DoubleSide; flag.position.set(-side * 0.22, 1.28, 0); pivot.add(flag);
+      poles.push({ pivot, x: x + side * 1.75, s, angle: 0, velocity: 0, axis: new THREE.Vector3(0, 0, 1) });
     }
     root.add(group); gates.push({ s, x, passed: false, hit: null });
   }
@@ -116,12 +136,12 @@ export function createTrail(ctx, mode) {
   };
   const restart = () => {
     Object.assign(state, { s: 0, x: 0, speed: 0, lateral: 0, edgeHits: 0, passed: 0, missed: 0, time: 0, status: 'ready', crashCooldown: 0 });
-    gates.forEach(g => { g.passed = false; g.hit = null; }); rig.position.set(0, 0, 0);
+    gates.forEach(g => { g.passed = false; g.hit = null; }); poles.forEach(p => { p.angle = 0; p.velocity = 0; p.touched = false; }); rig.position.set(0, 0, 0);
   };
   const retry = ctx.button({ label: 'Recomeçar', w: 0.28, h: 0.08, onClick: restart }); retry.position.set(0.75, 1.35, -1.1); root.add(retry);
   ctx.teleport({ enabled: false, walk: false });
   return {
-    state, gates, restart,
+    state, gates, poles, restart,
     update(dt) {
       dt = Math.max(0, Math.min(0.05, dt)); if (!dt) return;
       if (state.status === 'ready') state.status = 'running';
@@ -131,8 +151,12 @@ export function createTrail(ctx, mode) {
         const keySteer = (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0);
         const pointers = ctx.pointers();
         const controls = { steer: keySteer || handSteer(), brake: keys.has('KeyS') || keys.has('ArrowDown') || pointers.some(p => p.pinch && !p.uiBusy), throttle: ski || keys.has('KeyW') || keys.has('ArrowUp') || pointers.length > 0 };
-        const before = state.s;
+        const before = state.s, beforeX = state.x;
         stepTrail(state, controls, dt, mode);
+        // Brushing a pole (rider about 0.35 m wide) knocks it the way you ride.
+        for (const pole of poles) if (before < pole.s + 0.3 && state.s >= pole.s - 0.3 && Math.abs(state.x - pole.x) < 0.4) {
+          if (!pole.touched) { hitPole(pole, Math.sign(state.x - beforeX || 1) || 1, state.speed); pole.axis.set(0, 0, -1); pole.touched = true; audio.noise?.({ dur: 0.05, freq: 1800, vol: 0.08 }); }
+        } else pole.touched = false;
         for (const gate of gates) if (!gate.passed && before < gate.s && state.s >= gate.s) {
           gate.passed = true; gate.hit = gateResult(state.x, gate.x);
           if (gate.hit) { state.passed++; audio.click?.(); }
@@ -144,6 +168,7 @@ export function createTrail(ctx, mode) {
           if (state.status === 'won') audio.success?.(); else audio.thud?.();
         }
       }
+      for (const pole of poles) { stepPole(pole, dt); pole.pivot.rotation.set(-Math.abs(pole.angle) * 0.6, 0, -pole.angle); }
       rig.position.set(state.x, height(state.s, mode), -state.s);
       ride.position.set(state.x, height(state.s, mode), -state.s - (ski ? 0.25 : 0.4));
       ride.rotation.set(0, -state.lateral * 0.025, -state.lateral * 0.03);

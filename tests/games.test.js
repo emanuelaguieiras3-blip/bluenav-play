@@ -430,3 +430,54 @@ test('boxes are rounded with the same size and voxel games keep cubes', async ()
   assert.equal(turned.geometry.type, 'BoxGeometry'); assert.equal(roundedFromBox(mesh.geometry), null, 'never rounded twice');
   assert.ok(CUBIC_GAMES.has('blocks'));
 });
+
+test('plaza: dorm wardrobe, then a race, paintball, parkour and hangout map all run and pay tokens', async () => {
+  const store = new Map(); globalThis.localStorage = { getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
+  const { generateMap, MAP_COUNT } = await import('../src/games/plaza/maps.js');
+  const f = fixture(2), game = (await loadGameModule('plaza')).default.create(f.ctx);
+  const run = (n, dt = 1 / 30) => { for (let i = 0; i < n; i++) { f.app.scene.updateMatrixWorld(true); game.update(dt, i * dt); } };
+  const first = mode => { for (let i = 0; i < MAP_COUNT; i++) if (generateMap(i).mode.id === mode) return i; };
+  const finite = () => f.app.scene.traverse(o => assert.ok([...o.position.toArray(), ...o.quaternion.toArray()].every(Number.isFinite), `${o.name || o.type} finite`));
+  try {
+    assert.equal(game.getState().kind, 'dorm'); run(30); finite();
+    assert.equal(game.wardrobe.choose('paint', 2).ok, true);
+    // Race: lights, then everyone drives; bots make real progress.
+    game.enterMap(first('corrida')); run(30 * 25);
+    const race = game.scene.state; assert.equal(race.phase, 'race');
+    assert.ok(game.scene.bots.some(b => b.car.ring > 2), `bots ${game.scene.bots.map(b => b.car.ring)}`); finite();
+    // Paintball: bots shoot each other; the score moves.
+    game.enterMap(first('paintball')); for (let k = 0; k < 12 && game.scene.state.score[0] + game.scene.state.score[1] === 0; k++) run(30 * 10);
+    const pb = game.scene.state; if (process.env.PB_DEBUG) console.log('PB', JSON.stringify(game.scene.entities.map(e => [e.name, e.state, e.alive, e.ammo, e.reloading, e.seen, e.mesh && e.mesh.position.toArray().map(v => +v.toFixed(1)), e.goal && e.goal.toArray().map(v => +v.toFixed(1))]))); assert.ok(pb.score[0] + pb.score[1] > 0, `score ${pb.score}`); finite();
+    // Parkour: falling respawns at the checkpoint; reaching the flag pays.
+    const pk = first('parkour'); game.enterMap(pk); f.ctx.rig.position.y = -20; run(2);
+    assert.equal(game.scene.state.falls, 1);
+    const tokens = game.wardrobe.tokens, [fx, fy, fz] = generateMap(pk).finish;
+    f.ctx.rig.position.set(fx, fy, fz); run(2);
+    assert.equal(game.scene.state.finished, true); assert.ok(game.wardrobe.tokens > tokens);
+    // Hangout: enter the car and drive.
+    game.enterMap(first('encontro')); run(10);
+    game.scene.toggleDrive(); assert.equal(game.scene.state.driving, true);
+    f.input.keys.add('KeyW'); const start = game.scene.car.z; run(60); f.input.keys.clear();
+    assert.ok(Math.hypot(game.scene.car.x - generateMap(first('encontro')).car[0], game.scene.car.z - start) > 3, 'car moved');
+    game.scene.toggleDrive(); assert.equal(game.scene.state.driving, false); finite();
+    game.enterDorm(); assert.equal(game.getState().kind, 'dorm');
+  } finally { game.dispose(); f.disposers.forEach(fn => fn()); disposeTree(f.app.root); f.texture.dispose(); }
+});
+
+test('plaza: a wide sample of the 500 maps loads and runs without invalid transforms', async () => {
+  const f = fixture(1), game = (await loadGameModule('plaza')).default.create(f.ctx);
+  try {
+    for (let index = 0; index < 500; index += 7) {
+      game.enterMap(index);
+      for (let i = 0; i < 20; i++) { f.app.scene.updateMatrixWorld(true); game.update(1 / 30, i / 30); }
+      assert.ok(f.ctx.rig.position.toArray().every(Number.isFinite), `map ${index}`);
+      f.app.root.traverse(o => { if (o.isInstancedMesh) assert.ok(o.count > 0 && Number.isFinite(o.boundingSphere?.radius), `map ${index} instancing`); });
+    }
+  } finally { game.dispose(); f.disposers.forEach(fn => fn()); disposeTree(f.app.root); f.texture.dispose(); }
+});
+
+test('shared cached geometries survive a scene teardown', () => {
+  const g = new THREE.BoxGeometry(); g.userData.shared = true; let disposed = false; g.addEventListener('dispose', () => { disposed = true; });
+  const group = new THREE.Group(); group.add(new THREE.Mesh(g, new THREE.MeshBasicMaterial()));
+  disposeTree(group); assert.equal(disposed, false);
+});

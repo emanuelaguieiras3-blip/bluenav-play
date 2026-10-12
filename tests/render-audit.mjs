@@ -46,7 +46,7 @@ try {
     console.error('Startup diagnostics:', JSON.stringify({ errors, state: await page.evaluate(() => ({ app: !!window.__app, loading: window.__app?.loading, game: window.__app?.gameId, body: document.body.innerText.slice(0, 1000) })) }));
     throw error;
   }
-  for (const game of GAMES) {
+  for (const game of GAMES.filter(game => !process.argv[4] || game.id === process.argv[4])) {
     console.log(`Loading ${game.id}`);
     await page.evaluate(async (id) => {
       const app = window.__app;

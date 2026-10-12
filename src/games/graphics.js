@@ -5,6 +5,7 @@ import { std, glowTexture } from './common.js';
 import { rng } from '../core/util.js';
 
 export const GRAPHICS_THEMES = {
+  plaza: { name: 'Praça social', accent: '#ffb347', features: ['salas geradas', 'avatar', 'carros'] },
   complex: { name: 'Instalação de testes', accent: '#f2a33a', features: ['painéis', 'grade de piso', 'faixas de aviso'] },
   sandbox: { name: 'Hangar de experimentos', accent: '#90d2ec', features: ['painéis', 'grade de piso', 'bancadas'] },
   jobs: { name: 'Oficina organizada', accent: '#bbdfb0', features: ['painéis', 'grade de piso', 'bandejas coloridas'] },
@@ -20,6 +21,7 @@ export const GRAPHICS_THEMES = {
   kingdom: { name: 'Jardim de construção', accent: '#94d4a0', features: ['pavilhão', 'jardins', 'base da mesa'] },
   dungeon: { name: 'Ruínas antigas', accent: '#69ded0', features: ['arcos do corredor', 'azulejos gastos', 'poeira e umidade'] },
   galaxy: { name: 'Órbita profunda', accent: '#81bfff', features: ['nebulosa', 'planeta com anéis', 'atmosfera planetária'] },
+  universe: { name: 'Laboratório cósmico', accent: '#ffbd89', features: ['campo de estrelas', 'poeira interestelar', 'luz dos astros'] },
   puzzle: { name: 'Ateliê de formas', accent: '#e9b970', features: ['pedestal', 'parede do ateliê', 'aros de montagem'] },
   dive: { name: 'Recife iluminado', accent: '#70e6d3', features: ['cáusticas animadas', 'bolhas', 'algas'] },
   climb: { name: 'Cume alpino', accent: '#d8b985', features: ['serras distantes', 'nuvens altas', 'estratos da rocha'] },
@@ -159,6 +161,7 @@ export function createGameGraphics(ctx, id) {
       for (const x of [-width / 3, width / 3]) box([0.6, 0.6, 0.04], '#6c8894', [x, 2.1, -width / 2 + 0.15], { map: ctx.tex.get('instrumentPanel') });
       break;
     }
+    case 'plaza': { motes('#fff1c4', 40, [[-6, 6], [0.5, 4], [-6, 4]], 0.02); beam([2, 2.5, -3], [1, 3], '#fff4dc', -0.3, 0.03); break; }
     case 'complex': {
       grid(8, 16, 1, [0, 0.009, -8], theme.accent, 0.1);
       for (const z of [-4, -12]) box([0.6, 0.6, 0.04], '#6c8894', [-4.05, 2.1, z], { map: ctx.tex.get('instrumentPanel') });
@@ -338,6 +341,10 @@ export function createGameGraphics(ctx, id) {
       const water = new Set();
       ctx.root.traverse((o) => { for (const m of Array.isArray(o.material) ? o.material : o.material ? [o.material] : []) if (m.transparent && m.map && m.opacity === 0.72) water.add(m.map); });
       updates.push((t) => { for (const map of water) { map.offset.x = t * 0.014; map.offset.y = Math.sin(t * 0.1) * 0.03; } });
+      break;
+    }
+    case 'universe': {
+      motes('#b6c7ff', 70, [[-22, 22], [-11, 12], [-36, -5]], 0.07, 0.015);
       break;
     }
   }

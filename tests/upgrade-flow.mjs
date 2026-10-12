@@ -45,7 +45,7 @@ try {
   });
   for (const key of ['joystickMoved', 'disconnectedStopped', 'keyboardRemoteMoved', 'gravityWorks', 'hidden', 'shown', 'kitCleared', 'mobile']) assert.equal(report[key], true, key);
   assert.ok(report.maxMaterialTexture <= 128);
-  for (const id of ['complex', 'racing', 'sandbox', 'jobs', 'tactical', 'rhythm', 'arena', 'tablegames', 'physics', 'jungle', 'dungeon']) {
+  for (const id of ['plaza', 'ski', 'motorbike', 'shiftworld', 'complex', 'racing', 'sandbox', 'jobs', 'tactical', 'rhythm', 'arena', 'tablegames', 'physics', 'jungle', 'dungeon']) {
     await page.evaluate(async id => { const a = window.__app; await a.loadGame(id); a.menu.toggle(false); a.menu.update(1); a.hud.group.visible = false; a.teleport.fade = 0; a.teleport.fadeDir = 0; a.teleport.shade.visible = false; a._look(1 / 60); a.input.update(1 / 60); a.game.update(1 / 60, 0); a.scene.updateMatrixWorld(true); a.renderer.render(a.scene, a.camera); }, id);
     await page.screenshot({ path: `${folder}/${id}.png` });
   }

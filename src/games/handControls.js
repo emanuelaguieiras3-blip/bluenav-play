@@ -1,5 +1,6 @@
 // Controls describe the actual mechanics in each game, including one-hand play.
 export const HAND_CONTROLS = {
+  plaza: ['Toque botões com o dedo. Pinça atira e freia. Relógio volta ao quarto.', 'Duas mãos giram o volante; empurre plataformas com os braços.'],
   complex: ['Pince a arma; pince de novo para atirar. Mão bem aberta solta.', 'Outra mão: carregador no quadril, base da arma, puxe o ferrolho.'],
   sandbox: ['Pince para pegar; gire o pulso. Bata para empurrar.', 'Pesados: pince com as duas mãos. Arremesse!'],
   jobs: ['Solte o item na estação. Toque no botão.', 'Cada mão leva um item. Toque no botão da estação.'],
@@ -15,6 +16,7 @@ export const HAND_CONTROLS = {
   kingdom: ['Escolha colocar/quebrar. Mire e faça pinça.', 'Direita coloca blocos. Esquerda quebra blocos.'],
   dungeon: ['Leve a tocha às runas. Feche a mão para andar.', 'Direita: tocha. Feche a esquerda para andar.'],
   galaxy: ['Mire e faça pinça, ou aponte, para disparar.', 'Mire com cada mão e faça pinça para disparar.'],
+  universe: ['Escolha um corpo e pince no espaço para criá-lo.', 'Use as duas mãos para colocar astros; botões exibem impacto e maré gravitacional.'],
   puzzle: ['Pince uma peça e leve até o encaixe.', 'Uma peça por mão. Pince o vazio para girar.'],
   dive: ['Faça braçadas, ou pince e puxe a água.', 'Faça braçadas com mãos abertas para nadar.'],
   climb: ['Pince uma pedra clara e puxe para baixo.', 'Alterne as mãos nas pedras claras para subir.'],

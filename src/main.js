@@ -1,4 +1,5 @@
 import { App } from './app.js';
+import { CONFIG } from '../config.js';
 
 const $ = (id) => document.getElementById(id);
 const status = (t) => { $('status').textContent = t; };
@@ -32,6 +33,11 @@ if (navigator.xr?.isSessionSupported) {
   navigator.xr.isSessionSupported('immersive-vr').then((ok) => { $('btn-xr').hidden = !ok; }).catch(() => {});
 }
 if (!matchMedia('(pointer: coarse)').matches) $('chk-hands').checked = false;
+if (!CONFIG.GEMINI_API_KEY && !CONFIG.GEMINI_PROXY_URL) {
+  $('chk-gemini').checked = false;
+  $('chk-gemini').disabled = true;
+  $('chk-gemini').parentElement.title = 'Configure GEMINI_PROXY_URL para ativar a calibração Gemini.';
+}
 
 // ?auto=flat&game=racing — abre direto (útil para testar)
 const auto = new URLSearchParams(location.search).get('auto');
