@@ -2,7 +2,7 @@
 // truth, so its current art, save data, combat and network play keep working.
 import * as THREE from './vendor/three.module.js';
 import { createSpatialWorld } from './vr-world.js';
-import { pinchMovement } from './vr-gesture.js';
+import { pinchMovement, stickMovement } from './vr-gesture.js';
 
 const worldCanvas = document.getElementById('world');
 const button = document.createElement('button');
@@ -63,6 +63,9 @@ function labelTexture(title, detail = '') {
 const questLabel = labelTexture('VÉSPERA', 'Comece sua aventura na tela antes de entrar em VR');
 const quest = new THREE.Mesh(new THREE.PlaneGeometry(2.85, .5), new THREE.MeshBasicMaterial({ map: questLabel.texture, transparent: true }));
 quest.position.set(0, 2.55, -2.1); scene.add(quest);
+const closeQuestLabel = labelTexture('×');
+const questClose = new THREE.Mesh(new THREE.PlaneGeometry(.22, .22), new THREE.MeshBasicMaterial({ map: closeQuestLabel.texture, transparent: true, side: THREE.DoubleSide }));
+questClose.position.set(1.55, 2.55, -2.08); questClose.userData.action = 'dismiss-quest'; scene.add(questClose);
 const gestureLabel = labelTexture('MÃO ESQUERDA: PINÇA + MOVER', 'Mão direita: aponte e faça pinça para agir');
 const gestureHelp = new THREE.Mesh(new THREE.PlaneGeometry(2.35, .4), new THREE.MeshBasicMaterial({ map: gestureLabel.texture, transparent: true }));
 gestureHelp.position.set(0, 2.06, -1.9); scene.add(gestureHelp);
@@ -74,6 +77,7 @@ const controls = [
   { title: 'Habilidade', key: 'q', x: .36, y: .18 }, { title: 'Menu', key: 'Escape', x: 1.08, y: .18 },
 ];
 const targets = [];
+targets.push(questClose);
 for (const control of controls) {
   const text = labelTexture(control.title);
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(.62, .25), new THREE.MeshBasicMaterial({ map: text.texture, transparent: true, side: THREE.DoubleSide }));
@@ -101,8 +105,12 @@ function release(source) {
 }
 function press(source, ray) {
   raycaster.ray.copy(ray); raycaster.far = 3.5;
-  const hit = raycaster.intersectObjects(targets, false)[0];
+  const hit = raycaster.intersectObjects(targets.filter(target => target.visible), false)[0];
   if (hit) {
+    if (hit.object.userData.action === 'dismiss-quest') {
+      quest.visible = questClose.visible = false;
+      return true;
+    }
     const key = hit.object.userData.key; held.set(source, key); emitKey(key, true);
     hit.object.scale.setScalar(.92); return true;
   }
@@ -196,6 +204,15 @@ let activeSession = null, lastQuest = '', helpMode = '';
 const rays = new Map();
 let walkingSource = null, walkingAnchor = null;
 let lastFrameTime = 0;
+function showRay(source, ray, active) {
+  let line = rays.get(source);
+  if (!line) {
+    line = new THREE.ArrowHelper(new THREE.Vector3(0, 0, -1), new THREE.Vector3(), 1.5, '#f6d591', .11, .035);
+    scene.add(line); rays.set(source, line);
+  }
+  line.position.copy(ray.origin); line.setDirection(ray.direction);
+  line.setColor(active ? '#7ce4c0' : '#f6d591');
+}
 renderer.setAnimationLoop((time, frame) => {
   if (!activeSession || !frame) return;
   window.GameSession?.tickVR?.(time);
@@ -207,19 +224,23 @@ renderer.setAnimationLoop((time, frame) => {
   if (current !== lastQuest) { lastQuest = current; questLabel.set(title, goal); }
   const reference = renderer.xr.getReferenceSpace();
   const seen = new Set();
+  let handsSeen = 0, handMovement = { x: 0, y: 0 };
   if (reference) for (const source of activeSession.inputSources) {
+    if (!source.hand) {
+      const pose = frame.getPose(source.targetRaySpace, reference);
+      if (!pose) continue;
+      const t = pose.transform;
+      const ray = new THREE.Ray(new THREE.Vector3(t.position.x, t.position.y, t.position.z),
+        new THREE.Vector3(0, 0, -1).applyQuaternion(new THREE.Quaternion(t.orientation.x, t.orientation.y, t.orientation.z, t.orientation.w)));
+      seen.add(source); showRay(source, ray, held.has(source));
+      continue;
+    }
     const hand = handRay(frame, source, reference);
     if (!hand) continue;
-    seen.add(source);
+    seen.add(source); handsSeen++;
     updateHandModel(source, frame, reference);
-    let line = rays.get(source);
-    if (!line) {
-      line = new THREE.ArrowHelper(new THREE.Vector3(0, 0, -1), new THREE.Vector3(), 1.5, '#f6d591', .11, .035);
-      scene.add(line); rays.set(source, line);
-    }
-    line.position.copy(hand.ray.origin); line.setDirection(hand.ray.direction);
     const pinched = pinchedSources.has(source) ? hand.pinchDistance < .045 : hand.pinchDistance < .028;
-    line.setColor(pinched ? '#7ce4c0' : '#f6d591');
+    showRay(source, hand.ray, pinched);
     if (pinched && !pinchedSources.has(source)) {
       pinchedSources.add(source);
       const acted = press(source, hand.ray);
@@ -228,19 +249,26 @@ renderer.setAnimationLoop((time, frame) => {
       }
     }
     if (pinched && source === walkingSource) {
-      const movement = pinchMovement(walkingAnchor, hand.wrist);
-      window.GameSession?.setVRMovement?.(movement.x, movement.y);
+      handMovement = pinchMovement(walkingAnchor, hand.wrist);
     }
     if (!pinched && pinchedSources.has(source)) { pinchedSources.delete(source); release(source); }
   }
   for (const source of pinchedSources) if (!seen.has(source)) { pinchedSources.delete(source); release(source); }
   for (const source of handModels.keys()) if (!seen.has(source)) removeHandModel(source);
   for (const [source, line] of rays) if (!seen.has(source)) { scene.remove(line); rays.delete(source); }
-  const nextHelp = seen.size ? 'hands' : 'controllers';
+  const controllers = [...activeSession.inputSources].filter(source => !source.hand && source.gamepad);
+  const controller = controllers.find(source => source.handedness === 'left') || controllers[0];
+  const viewer = reference && frame.getViewerPose(reference);
+  const orientation = viewer?.transform.orientation;
+  const yaw = orientation ? new THREE.Euler().setFromQuaternion(new THREE.Quaternion(orientation.x, orientation.y, orientation.z, orientation.w), 'YXZ').y : 0;
+  const stick = controller ? stickMovement(controller.gamepad.axes, yaw) : { x: 0, y: 0 };
+  const magnitude = Math.max(1, Math.hypot(handMovement.x + stick.x, handMovement.y + stick.y));
+  window.GameSession?.setVRMovement?.((handMovement.x + stick.x) / magnitude, (handMovement.y + stick.y) / magnitude);
+  const nextHelp = handsSeen ? 'hands' : 'controllers';
   if (nextHelp !== helpMode) {
     helpMode = nextHelp;
     gestureLabel.set(nextHelp === 'hands' ? 'MÃO ESQUERDA: PINÇA + MOVER' : 'CONTROLES VR',
-      nextHelp === 'hands' ? 'Mão direita: aponte e faça pinça para agir' : 'Aponte e selecione os botões à frente');
+      nextHelp === 'hands' ? 'Mão direita: aponte e faça pinça para agir' : 'Analógico esquerdo: andar · gatilho: selecionar');
   }
   renderer.render(scene, camera);
 });
@@ -256,6 +284,7 @@ async function enterVR() {
       requiredFeatures: ['local-floor'], optionalFeatures: ['hand-tracking', 'dom-overlay'], domOverlay: { root: document.body },
     });
     activeSession = session;
+    quest.visible = questClose.visible = true;
     renderer.domElement.style.display = 'block'; button.textContent = 'Sair do VR';
     session.addEventListener('end', () => {
       for (const source of held.keys()) release(source);
@@ -279,6 +308,10 @@ async function enterVR() {
       press(event.inputSource, ray);
     });
     session.addEventListener('selectend', event => release(event.inputSource));
+    session.addEventListener('squeezestart', event => {
+      if (event.inputSource.hand) return;
+      window.GameSession?.command(event.inputSource.handedness === 'left' ? 'skill' : 'dodge');
+    });
     await renderer.xr.setSession(session);
   } catch (error) {
     if (activeSession) await activeSession.end().catch(() => {});

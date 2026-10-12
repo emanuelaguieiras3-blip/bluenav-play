@@ -1,5 +1,6 @@
 import { std, glowTexture } from './common.js';
 import { BODY_TYPES, circularVelocity, makeBody, stepUniverse, tidalRadius } from './universePhysics.js';
+import { editCelestialBody } from './universeEditing.js';
 
 const MAX_BODIES = 48;
 const TOOL_LABELS = { star: 'Estrela', planet: 'Planeta', moon: 'Lua', blackhole: 'Buraco negro', meteor: 'Meteoro' };
@@ -107,7 +108,7 @@ export default {
     starfield(THREE, root);
     const bodiesRoot = new THREE.Group(); bodiesRoot.name = 'universe-bodies'; root.add(bodiesRoot);
     const effectsRoot = new THREE.Group(); effectsRoot.name = 'universe-effects'; root.add(effectsRoot);
-    const state = { bodies: [], time: 0, paused: false, speed: 1, selected: null, impactSeen: false, lastImpactType: null, tidalSeen: false, complete: false, nextId: 1 };
+    const state = { bodies: [], time: 0, paused: false, speed: 1, selected: null, selectedBodyId: null, impactSeen: false, lastImpactType: null, tidalSeen: false, complete: false, nextId: 1 };
     const sunMap = solarTexture(THREE);
     const visuals = new Map(), effects = [], tides = new Map();
     const net = ctx.app?.network, pendingEvents = [], lastCommand = new Map();
@@ -146,7 +147,7 @@ export default {
       effects.length = 0;
       for (const lines of tides.values()) for (const line of lines) destroy(line);
       tides.clear();
-      Object.assign(state, { bodies: [], time: 0, impactSeen: false, lastImpactType: null, tidalSeen: false, complete: false, nextId: 1, paused: false });
+      Object.assign(state, { bodies: [], time: 0, impactSeen: false, lastImpactType: null, tidalSeen: false, complete: false, nextId: 1, paused: false, selectedBodyId: null });
     }
     function preset(kind) {
       if (guest()) { net.sendEvent('universe-command', { action: 'preset', kind }); return; }
@@ -199,6 +200,36 @@ export default {
     resetButton.position.set(0.05, 0.8, -1.45); root.add(resetButton);
     const speedButton = ctx.button({ label: 'Velocidade 1×', w: 0.35, h: 0.075, onClick: cycleSpeed });
     speedButton.position.set(0.67, 0.8, -1.45); root.add(speedButton);
+    const inspectButton = ctx.button({ label: 'Inspecionar', w: 0.34, h: 0.075, onClick: () => {
+      state.selected = null; status('Aponte e pince um astro para editar.');
+    } });
+    inspectButton.position.set(1.18, 0.8, -1.45); root.add(inspectButton);
+    const inspector = new THREE.Group(); inspector.position.set(1.24, 2.0, -1.7); inspector.visible = false; root.add(inspector);
+    const info = ctx.label('', { w: 1.15, h: 0.29, size: 0.25, bg: 'rgba(5,16,35,.91)' });
+    info.position.y = 0.18; inspector.add(info);
+    const selectionRing = new THREE.Mesh(new THREE.TorusGeometry(1, 0.025, 8, 64),
+      new THREE.MeshBasicMaterial({ color: '#83d8ff', transparent: true, opacity: 0.85, depthWrite: false }));
+    selectionRing.name = 'universe-selection'; selectionRing.visible = false; root.add(selectionRing);
+    const editRows = [
+      [['Massa −', 'mass-down'], ['Massa +', 'mass-up']],
+      [['Raio −', 'size-down'], ['Raio +', 'size-up']],
+      [['Vel. −', 'speed-down'], ['Vel. +', 'speed-up']],
+      [['Parar', 'stop'], ['Órbita', 'orbit']],
+    ];
+    for (let row = 0; row < editRows.length; row++) for (let column = 0; column < 2; column++) {
+      const [label, action] = editRows[row][column];
+      const button = ctx.button({ label, w: 0.28, h: 0.065, onClick: () => editSelected(action) });
+      button.position.set(column ? 0.3 : -0.3, -row * 0.115 - 0.06, 0.008);
+      inspector.add(button);
+    }
+    function editSelected(action) {
+      const id = state.selectedBodyId;
+      if (!id) { status('Selecione um astro primeiro.'); return false; }
+      if (guest()) { net.sendEvent('universe-command', { action: 'edit', id, edit: action }); return true; }
+      const changed = editCelestialBody(state.bodies, id, action);
+      status(changed ? 'Propriedade atualizada na simulação.' : 'Edição indisponível para este astro.');
+      return changed;
+    }
     const title = ctx.label('UNIVERSE SANDBOX', { w: 2.8, h: 0.21, size: 0.36, bg: 'rgba(2,8,22,.84)' });
     title.position.set(0, 2.8, -3.2); root.add(title);
     const mark = new THREE.Group(); mark.position.set(-1.53, 2.8, -3.16);
@@ -393,6 +424,8 @@ export default {
           [data.position.x, data.position.y, data.position.z].every(value => Number.isFinite(value) && Math.abs(value) <= 30)) {
         spawn(data.type, data.position);
       } else if (data.action === 'preset' && ['system', 'impact', 'tidal'].includes(data.kind)) preset(data.kind);
+      else if (data.action === 'edit' && typeof data.id === 'string' && /^u\d{1,5}$/.test(data.id) &&
+          typeof data.edit === 'string') editCelestialBody(state.bodies, data.id, data.edit);
       else if (data.action === 'clear') clear();
       else if (data.action === 'pause') togglePause();
       else if (data.action === 'speed') cycleSpeed();
@@ -400,14 +433,28 @@ export default {
     const unsubscribe = net ? [net.on?.('universe-command', receiveCommand), net.on?.('universe-state', applySnapshot)] : [];
     ctx.onDispose?.(() => unsubscribe.forEach(stop => stop?.()));
     if (!guest()) preset('system');
+    const bodyRaycaster = new THREE.Raycaster();
+    function selectFromPointer(pointer) {
+      bodyRaycaster.ray.copy(pointer.ray);
+      bodyRaycaster.near = 0; bodyRaycaster.far = 30;
+      const cores = [...visuals.values()].map(visual => visual.group.userData.core);
+      const hit = bodyRaycaster.intersectObjects(cores, false)[0];
+      if (!hit) return false;
+      const body = [...visuals].find(([, visual]) => visual.group.userData.core === hit.object);
+      if (!body) return false;
+      state.selectedBodyId = body[0]; pointer.uiBusy = true;
+      status(`${TOOL_LABELS[state.bodies.find(item => item.id === body[0])?.type] || 'Astro'} selecionado. Use o painel para editar.`);
+      return true;
+    }
     function placeFromPointer(pointer) {
-      if (!state.selected || pointer.uiBusy || !pointer.ray) return;
+      if (pointer.uiBusy || !pointer.ray) return;
+      if (!state.selected) { selectFromPointer(pointer); return; }
       const position = pointer.ray.at(8, new THREE.Vector3());
       if (position.z > -2.5 || position.z < -25) return;
       spawn(state.selected, P(position)); pointer.uiBusy = true;
     }
     return {
-      state, spawn, preset, clear,
+      state, spawn, preset, clear, editSelected,
       update(dt) {
         dt = Math.max(0, Math.min(0.05, dt)); messageTime = Math.max(0, messageTime - dt);
         for (let i = 0; i < tools.length; i++) if (input.keys.has(`Digit${i + 1}`)) { state.selected = tools[i]; input.keys.delete(`Digit${i + 1}`); }
@@ -424,6 +471,17 @@ export default {
           else if (event.type === 'consume') status('Buraco negro absorveu um corpo.');
         }
         updateVisuals(dt); updateTides(); updateEffects(dt);
+        const selectedBody = state.bodies.find(body => body.id === state.selectedBodyId);
+        inspector.visible = !!selectedBody;
+        selectionRing.visible = !!selectedBody;
+        if (selectedBody) {
+          selectionRing.position.copy(V(THREE, selectedBody.position));
+          selectionRing.scale.setScalar(selectedBody.radius * 1.28);
+          selectionRing.quaternion.copy(ctx.app?.camera?.getWorldQuaternion(new THREE.Quaternion()) || new THREE.Quaternion());
+          const speed = Math.hypot(...Object.values(selectedBody.velocity));
+          info.userData.set?.(`${TOOL_LABELS[selectedBody.type]} ${selectedBody.id} | massa ${selectedBody.mass.toFixed(2)}`,
+            `raio ${selectedBody.radius.toFixed(2)} | velocidade ${speed.toFixed(2)}`);
+        } else if (state.selectedBodyId) state.selectedBodyId = null;
         if (net?.room && !guest()) {
           pendingEvents.push(...events.filter(event => ['impact', 'tidal', 'consume'].includes(event.type)));
           syncClock += dt;
@@ -440,7 +498,7 @@ export default {
           state.complete = true; ctx.objective?.('Objetivo concluído. Continue criando e testando o universo.'); audio.success?.();
         }
         ctx.hud(`Universe Sandbox · ${state.bodies.length}/${MAX_BODIES} corpos · ${state.speed}×${state.paused ? ' · pausado' : ''}`,
-          messageTime ? message : `1–5 escolhem corpo; pince para criar. Sistema, Impacto e Maré mostram fenômenos. ${state.complete ? 'Objetivo concluído.' : ''}`);
+          messageTime ? message : `1–5 escolhem corpo; pince para criar. Inspecionar permite editar massa, raio e velocidade. ${state.complete ? 'Objetivo concluído.' : ''}`);
       },
     };
   },

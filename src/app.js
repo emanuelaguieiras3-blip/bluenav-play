@@ -44,7 +44,12 @@ class HudBar {
     this.objective = makeLabel('', { w: 1.08, h: 0.14, size: 0.20, fg: '#f2e6c9', bg: 'rgba(15,20,28,0.91)' });
     this.objective.position.set(0, 0.15, 0);
     this.objective.visible = false;
-    this.group.add(this.objective);
+    this.objectiveDismissed = false;
+    this.objectiveClose = makeButton(app, { w: 0.055, h: 0.055, label: '×', variant: 'glass', round: true,
+      onClick: () => { this.objectiveDismissed = true; this.objective.visible = false; this.objectiveClose.visible = false; } });
+    this.objectiveClose.position.set(0.59, 0.15, 0.006);
+    this.objectiveClose.visible = false;
+    this.group.add(this.objective, this.objectiveClose);
     this.guide = new THREE.Group();
     const guideBg = makeLabel('', { w: 0.86, h: 0.23, bg: 'rgba(16,20,28,0.94)' });
     this.guideTitle = makeLabel('', { w: 0.8, h: 0.055, size: 0.42, fg: '#87bdff', bg: 'rgba(0,0,0,0)' });
@@ -69,7 +74,7 @@ class HudBar {
     this.instruction = sub;
   }
   setObjective(text) {
-    this.objective.visible = !!text;
+    this.objective.visible = this.objectiveClose.visible = !!text && !this.objectiveDismissed;
     if (text) {
       const cut = text.length > 34 ? Math.max(18, text.lastIndexOf(' ', 33)) : text.length;
       this.objective.userData.set(`OBJETIVO: ${text.slice(0, cut).trim()}`, text.slice(cut).trim());
@@ -311,6 +316,7 @@ export class App {
       this.renderer.toneMappingExposure = id === 'night' ? 1.3 : id === 'dungeon' ? 1.15 : 1.05;
       this.ctx = this.gameCtx();
       this.gameId = id;
+      this.hud.objectiveDismissed = false;
       this.hud.setObjective(id === 'lobby' ? '' : GAME_OBJECTIVES[id] || 'Siga as instruções do cenário para concluir a partida.');
       this.game = mod.default.create(this.ctx) || {};
       this.graphics = createGameGraphics(this.ctx, id);

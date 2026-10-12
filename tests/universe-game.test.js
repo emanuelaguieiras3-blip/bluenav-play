@@ -69,3 +69,19 @@ test('Universe Sandbox: host valida comandos e envia a mesma simulação ao conv
   assert.ok(Math.abs(guestGame.state.bodies[0].position.x - hostGame.state.bodies[0].position.x) < 0.01);
   host.texture.dispose(); guest.texture.dispose();
 });
+
+test('Universe Sandbox: host valida edição de astro enviada pela rede', () => {
+  const handlers = new Map();
+  const net = { id: 'host', host: 'host', room: 'ROOM12',
+    on(name, callback) { handlers.set(name, callback); return () => handlers.delete(name); }, sendEvent() {} };
+  const { ctx, texture } = fixture(net), game = universe.create(ctx);
+  const planet = game.state.bodies.find(body => body.type === 'planet');
+  const mass = planet.mass;
+  handlers.get('universe-command')({ action: 'edit', id: planet.id, edit: 'mass-up' }, 'guest');
+  assert.equal(planet.mass, mass * 1.25);
+  handlers.get('universe-command')({ action: 'edit', id: planet.id, edit: 'arbitrary-code' }, 'guest2');
+  assert.equal(planet.mass, mass * 1.25);
+  handlers.get('universe-command')({ action: 'edit', id: 'wrong', edit: 'mass-up' }, 'guest3');
+  assert.equal(planet.mass, mass * 1.25);
+  texture.dispose();
+});

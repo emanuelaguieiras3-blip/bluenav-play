@@ -23,6 +23,7 @@ export class Input {
     this.mouseActive = false;
     this.mouseDown = false;
     this.touchDown = false;
+    this.tapPending = false;
     this.xrSelect = false;
     this.menuRequest = false;
     this.lookDelta = new THREE.Vector2();
@@ -61,8 +62,10 @@ export class Input {
       }
     });
     window.addEventListener('pointerup', (e) => {
-      if (e.pointerType === 'mouse') { if (e.button === 2) dragLook = false; else this.mouseDown = false; }
-      else this.touchDown = false;
+      if (e.pointerType === 'mouse') {
+        if (e.button === 2) dragLook = false;
+        else { this.tapPending ||= this.mouseDown; this.mouseDown = false; }
+      } else { this.tapPending ||= this.touchDown && moved <= 14; this.touchDown = false; }
       last = null;
       void touchStart;
     });
@@ -237,7 +240,10 @@ export class Input {
       p.main = p === main;
       if (p.source !== 'hand') p.stale = p.source === 'gaze' && !!tracker?.running;
       const pinch = p.stale ? p.prevPinch : p.rawPinch || (p.main && screenPinch);
-      p.pinchDown = !p.stale && pinch && !p.prevPinch; p.pinchUp = !p.stale && !pinch && p.prevPinch; p.pinch = pinch; p.prevPinch = pinch;
+      const instantTap = p.main && this.tapPending && !p.prevPinch && !pinch && !p.stale;
+      p.pinchDown = !p.stale && pinch && !p.prevPinch || instantTap;
+      p.pinchUp = !p.stale && !pinch && p.prevPinch || instantTap;
+      p.pinch = pinch; p.prevPinch = pinch;
       if (p.source !== 'hand') { p.pokeTip = null; p.pinchStrength = pinch ? 1 : (p.pinchStrength || 0); }
       if (p.fresh || dt <= 0) p.vel.set(0, 0, 0); else p.vel.copy(p.handPos).sub(p.prevHandPos).divideScalar(dt);
       if (p.vel.length() > 30) p.vel.set(0, 0, 0);
@@ -247,6 +253,7 @@ export class Input {
     // ponteiros que sumiram neste frame soltam o que estavam fazendo
     for (const [id, p] of this._ptrs) if (!active.includes(p)) { if (p.prevPinch) { p.pinchUp = true; } p.pinch = p.prevPinch = false; p.lost = (p.lost || 0) + 1; if (p.lost > 2) this._ptrs.delete(id); }
     this.pointers = active;
+    this.tapPending = false;
 
     // compatibilidade: os campos antigos refletem a mão principal
     this.main = main.hand || null;
