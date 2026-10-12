@@ -152,20 +152,23 @@ export default {
       if (guest()) { net.sendEvent('universe-command', { action: 'preset', kind }); return; }
       clear();
       if (kind === 'impact') {
-        const sun = spawn('star', { x: -3, y: 1.5, z: -9 });
-        const earth = spawn('planet', { x: 2, y: 1.5, z: -9 }, circularVelocity(sun, { x: 2, y: 1.5, z: -9 }));
-        const moonPosition = { x: 2.85, y: 1.5, z: -8 };
+        const sun = spawn('star', { x: -5, y: 1.5, z: -9 });
+        const earthPosition = { x: 4, y: 1.5, z: -9 };
+        const earth = spawn('planet', earthPosition, circularVelocity(sun, earthPosition));
+        const moonPosition = { x: 4.85, y: 1.5, z: -9 };
         spawn('moon', moonPosition, circularVelocity(earth, moonPosition));
-        spawn('meteor', { x: 4.4, y: 1.5, z: -9 }, { x: earth.velocity.x - 3.5, y: 0, z: earth.velocity.z });
+        spawn('meteor', { x: 4, y: 1.5, z: -6.6 }, { x: earth.velocity.x, y: 0, z: earth.velocity.z - 3.5 });
         status('Impacto: observe o meteoro atingir o planeta.');
       } else if (kind === 'tidal') {
         spawn('blackhole', { x: -1.4, y: 1.5, z: -9 });
         spawn('star', { x: 1.65, y: 1.5, z: -9 }, { x: -0.28, y: 0, z: 0.15 });
         status('Maré: a gravidade arranca matéria da estrela.');
       } else {
-        const sun = spawn('star', { x: -3, y: 1.5, z: -9 });
-        const earth = spawn('planet', { x: 2, y: 1.5, z: -9 }, circularVelocity(sun, { x: 2, y: 1.5, z: -9 }));
-        spawn('moon', { x: 2.9, y: 1.5, z: -9 }, { ...earth.velocity, z: earth.velocity.z + Math.sqrt(0.045 * earth.mass / 0.9) });
+        const sun = spawn('star', { x: -5, y: 1.5, z: -9 });
+        const earthPosition = { x: 4, y: 1.5, z: -9 };
+        const earth = spawn('planet', earthPosition, circularVelocity(sun, earthPosition));
+        const moonPosition = { x: 4.85, y: 1.5, z: -9 };
+        spawn('moon', moonPosition, circularVelocity(earth, moonPosition));
         status('Sistema: estrela, planeta e lua em movimento.');
       }
     }
@@ -217,18 +220,20 @@ export default {
       wave.position.copy(V(THREE, target.position)); group.add(wave);
       const ring = new THREE.Mesh(new THREE.TorusGeometry(1, 0.025, 7, 48), new THREE.MeshBasicMaterial({ color: '#ffcc8e', transparent: true, opacity: 0.9, depthWrite: false }));
       ring.position.copy(V(THREE, event.point));
-      ring.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), V(THREE, event.direction));
+      const normal = V(THREE, event.direction).normalize();
+      ring.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
       group.add(ring);
       const targetVisual = visuals.get(target.id);
+      const localNormal = targetVisual ? normal.clone().applyQuaternion(targetVisual.group.quaternion.clone().invert()) : normal;
       if (targetVisual && target.type === 'planet') {
         const crater = new THREE.Mesh(new THREE.CircleGeometry(0.07 + Math.min(0.05, event.speed * 0.01), 24),
           new THREE.MeshBasicMaterial({ color: '#261c1b', side: THREE.DoubleSide, depthWrite: false }));
-        crater.position.copy(V(THREE, event.direction).multiplyScalar(BODY_TYPES.planet.radius * 1.018));
-        crater.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), V(THREE, event.direction));
+        crater.position.copy(localNormal.clone().multiplyScalar(BODY_TYPES.planet.radius * 1.018));
+        crater.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), localNormal);
         targetVisual.group.add(crater);
       }
       const debris = [];
-      const point = V(THREE, event.point), normal = V(THREE, event.direction);
+      const point = V(THREE, event.point);
       const tangent = new THREE.Vector3(0, 1, 0).cross(normal).normalize();
       if (tangent.lengthSq() < 0.01) tangent.set(1, 0, 0);
       const bitangent = normal.clone().cross(tangent).normalize();
@@ -238,7 +243,7 @@ export default {
         mesh.position.copy(point); group.add(mesh);
         debris.push({ mesh, velocity: direction.multiplyScalar(0.7 + event.speed * 0.32), life: 1.8 });
       }
-      effects.push({ group, ring, wave, debris, age: 0, targetId: target.id });
+      effects.push({ group, ring, wave, debris, impactNormal: localNormal.clone(), age: 0, targetId: target.id });
       state.impactSeen = true; state.lastImpactType = target.type;
       status('Impacto: onda de choque e destroços lançados.'); audio.thud?.();
     }
@@ -248,7 +253,13 @@ export default {
         effect.age += dt;
         effect.ring.scale.setScalar(Math.min(target?.radius * 0.65 || 0.3, 0.02 + effect.age * 0.8));
         effect.ring.material.opacity = Math.max(0, 0.9 * (1 - effect.age / 1.7));
-        if (target) effect.wave.position.copy(V(THREE, target.position));
+        if (target) {
+          effect.wave.position.copy(V(THREE, target.position));
+          const visual = visuals.get(target.id);
+          const surfaceNormal = visual ? effect.impactNormal.clone().applyQuaternion(visual.group.quaternion) : effect.impactNormal;
+          effect.ring.position.copy(V(THREE, target.position)).addScaledVector(surfaceNormal, target.radius);
+          effect.ring.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), surfaceNormal);
+        }
         effect.wave.scale.setScalar((target?.radius || 0.4) + effect.age * 0.75);
         effect.wave.material.uniforms.opacity.value = Math.max(0, 0.8 * (1 - effect.age / 1.5));
         for (const debris of effect.debris) {

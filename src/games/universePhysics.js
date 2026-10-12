@@ -1,9 +1,10 @@
 // Scaled Newtonian sandbox. Units are intentionally small enough to make
 // orbits and impacts observable in a room-sized VR scene.
 export const GRAVITY = 0.045;
+const SOFTENING = 0.3;
 export const BODY_TYPES = Object.freeze({
   star: { mass: 260, radius: 0.78 },
-  planet: { mass: 3.4, radius: 0.4 },
+  planet: { mass: 9, radius: 0.4 },
   moon: { mass: 0.12, radius: 0.17 },
   blackhole: { mass: 720, radius: 0.46 },
   meteor: { mass: 0.065, radius: 0.1 },
@@ -23,7 +24,7 @@ export function makeBody(type, id, position, velocity = { x: 0, y: 0, z: 0 }) {
 export function circularVelocity(central, position) {
   const offset = sub(position, central.position), r = Math.hypot(offset.x, offset.z);
   if (r < central.radius * 1.5) return { ...central.velocity };
-  const speed = Math.sqrt(GRAVITY * central.mass / r);
+  const speed = Math.sqrt(GRAVITY * central.mass * r * r / (r * r + SOFTENING * SOFTENING) ** 1.5);
   return { x: central.velocity.x - offset.z / r * speed,
     y: central.velocity.y, z: central.velocity.z + offset.x / r * speed };
 }
@@ -35,6 +36,7 @@ export function tidalRadius(hole, star) {
 function merge(target, source) {
   const mass = target.mass + source.mass;
   target.velocity = mul(add(mul(target.velocity, target.mass), mul(source.velocity, source.mass)), 1 / mass);
+  target.position = mul(add(mul(target.position, target.mass), mul(source.position, source.mass)), 1 / mass);
   target.radius = Math.cbrt(target.radius ** 3 + source.radius ** 3);
   target.mass = mass;
 }
@@ -44,7 +46,7 @@ function oneStep(state, dt, events) {
   const acceleration = new Map(bodies.map(body => [body.id, { x: 0, y: 0, z: 0 }]));
   for (let i = 0; i < bodies.length; i++) for (let j = i + 1; j < bodies.length; j++) {
     const a = bodies[i], b = bodies[j], d = sub(b.position, a.position);
-    const softened = d.x * d.x + d.y * d.y + d.z * d.z + 0.3 ** 2;
+    const softened = d.x * d.x + d.y * d.y + d.z * d.z + SOFTENING ** 2;
     const factor = GRAVITY / (softened * Math.sqrt(softened));
     const aa = acceleration.get(a.id), ab = acceleration.get(b.id);
     aa.x += d.x * factor * b.mass; aa.y += d.y * factor * b.mass; aa.z += d.z * factor * b.mass;

@@ -28,6 +28,14 @@ test('Universe Sandbox: preset de impacto produz choque, detritos e objetivo', (
   assert.equal(game.state.lastImpactType, 'planet', 'o meteoro atinge a Terra, não a Lua');
   const effects = root.getObjectByName('universe-effects');
   assert.ok(effects.children.some(group => group.children.some(mesh => mesh.geometry?.type === 'TorusGeometry')));
+  const ring = effects.children.flatMap(group => group.children).find(mesh => mesh.geometry?.type === 'TorusGeometry');
+  for (let i = 0; i < 20; i++) game.update(1 / 60);
+  const planet = game.state.bodies.find(body => body.type === 'planet');
+  assert.ok(Math.abs(ring.position.distanceTo(new THREE.Vector3(planet.position.x, planet.position.y, planet.position.z)) - planet.radius) < 0.02,
+    'onda de impacto permanece na superfície enquanto o planeta se move');
+  const crater = root.getObjectByName(`celestial-${planet.id}`).children.find(mesh => mesh.geometry?.type === 'CircleGeometry');
+  assert.ok(crater.getWorldPosition(new THREE.Vector3()).distanceTo(ring.position) < 0.03,
+    'onda acompanha a cratera enquanto o planeta gira');
   assert.ok(game.state.complete, 'estrela, planeta, lua e impacto concluem objetivo');
   assert.ok(objectives.at(-1).includes('concluído'));
   texture.dispose();
