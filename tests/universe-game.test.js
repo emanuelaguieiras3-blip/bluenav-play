@@ -25,6 +25,7 @@ test('Universe Sandbox: preset de impacto produz choque, detritos e objetivo', (
   game.preset('impact');
   for (let i = 0; i < 240 && !game.state.impactSeen; i++) game.update(1 / 60);
   assert.ok(game.state.impactSeen, 'meteoro atinge planeta');
+  assert.equal(game.state.lastImpactType, 'planet', 'o meteoro atinge a Terra, não a Lua');
   const effects = root.getObjectByName('universe-effects');
   assert.ok(effects.children.some(group => group.children.some(mesh => mesh.geometry?.type === 'TorusGeometry')));
   assert.ok(game.state.complete, 'estrela, planeta, lua e impacto concluem objetivo');

@@ -63,6 +63,15 @@ try {
       app.env.update();
       app.renderer.render(app.scene, app.camera);
     }, game.id);
+    if (game.id === 'universe' && process.argv[5]) await page.evaluate(kind => {
+      const app = window.__app;
+      app.game.preset(kind);
+      if (kind === 'impact') {
+        for (let i = 0; i < 240 && !app.game.state.impactSeen; i++) app.game.update(1 / 60, i / 60, app.input);
+        for (let i = 0; i < 15; i++) app.game.update(1 / 60, i / 60, app.input);
+      } else app.game.update(1 / 60, 0, app.input);
+      app.scene.updateMatrixWorld(true); app.renderer.render(app.scene, app.camera);
+    }, process.argv[5]);
     const pauseCheck = await page.evaluate(() => {
       const app = window.__app, before = app.gameTime;
       app.menu.toggle(true); app.perf.capFps = 0; app.loop(performance.now());

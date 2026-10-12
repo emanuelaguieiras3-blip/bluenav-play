@@ -107,7 +107,7 @@ export default {
     starfield(THREE, root);
     const bodiesRoot = new THREE.Group(); bodiesRoot.name = 'universe-bodies'; root.add(bodiesRoot);
     const effectsRoot = new THREE.Group(); effectsRoot.name = 'universe-effects'; root.add(effectsRoot);
-    const state = { bodies: [], time: 0, paused: false, speed: 1, selected: null, impactSeen: false, tidalSeen: false, complete: false, nextId: 1 };
+    const state = { bodies: [], time: 0, paused: false, speed: 1, selected: null, impactSeen: false, lastImpactType: null, tidalSeen: false, complete: false, nextId: 1 };
     const sunMap = solarTexture(THREE);
     const visuals = new Map(), effects = [], tides = new Map();
     const net = ctx.app?.network, pendingEvents = [], lastCommand = new Map();
@@ -146,7 +146,7 @@ export default {
       effects.length = 0;
       for (const lines of tides.values()) for (const line of lines) destroy(line);
       tides.clear();
-      Object.assign(state, { bodies: [], time: 0, impactSeen: false, tidalSeen: false, complete: false, nextId: 1, paused: false });
+      Object.assign(state, { bodies: [], time: 0, impactSeen: false, lastImpactType: null, tidalSeen: false, complete: false, nextId: 1, paused: false });
     }
     function preset(kind) {
       if (guest()) { net.sendEvent('universe-command', { action: 'preset', kind }); return; }
@@ -154,7 +154,8 @@ export default {
       if (kind === 'impact') {
         const sun = spawn('star', { x: -3, y: 1.5, z: -9 });
         const earth = spawn('planet', { x: 2, y: 1.5, z: -9 }, circularVelocity(sun, { x: 2, y: 1.5, z: -9 }));
-        spawn('moon', { x: 2.9, y: 1.5, z: -9 }, { ...earth.velocity, z: earth.velocity.z + Math.sqrt(0.045 * earth.mass / 0.9) });
+        const moonPosition = { x: 2.85, y: 1.5, z: -8 };
+        spawn('moon', moonPosition, circularVelocity(earth, moonPosition));
         spawn('meteor', { x: 4.4, y: 1.5, z: -9 }, { x: earth.velocity.x - 3.5, y: 0, z: earth.velocity.z });
         status('Impacto: observe o meteoro atingir o planeta.');
       } else if (kind === 'tidal') {
@@ -207,10 +208,25 @@ export default {
       if (!target) return;
       const group = new THREE.Group(); effectsRoot.add(group);
       if (effects.length >= 8) { destroy(effects[0].group); effects.shift(); }
+      const wave = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), new THREE.ShaderMaterial({
+        uniforms: { opacity: { value: 0.75 } }, transparent: true, depthWrite: false, side: THREE.FrontSide, toneMapped: false,
+        blending: THREE.AdditiveBlending,
+        vertexShader: 'varying vec3 vNormal; varying vec3 vView; void main(){vec4 p=modelViewMatrix*vec4(position,1.0); vNormal=normalize(normalMatrix*normal); vView=normalize(-p.xyz); gl_Position=projectionMatrix*p;}',
+        fragmentShader: 'uniform float opacity; varying vec3 vNormal; varying vec3 vView; void main(){float rim=pow(1.0-abs(dot(normalize(vNormal),normalize(vView))),1.5); gl_FragColor=vec4(1.0,0.28,0.04,rim*opacity);}',
+      }));
+      wave.position.copy(V(THREE, target.position)); group.add(wave);
       const ring = new THREE.Mesh(new THREE.TorusGeometry(1, 0.025, 7, 48), new THREE.MeshBasicMaterial({ color: '#ffcc8e', transparent: true, opacity: 0.9, depthWrite: false }));
       ring.position.copy(V(THREE, event.point));
       ring.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), V(THREE, event.direction));
       group.add(ring);
+      const targetVisual = visuals.get(target.id);
+      if (targetVisual && target.type === 'planet') {
+        const crater = new THREE.Mesh(new THREE.CircleGeometry(0.07 + Math.min(0.05, event.speed * 0.01), 24),
+          new THREE.MeshBasicMaterial({ color: '#261c1b', side: THREE.DoubleSide, depthWrite: false }));
+        crater.position.copy(V(THREE, event.direction).multiplyScalar(BODY_TYPES.planet.radius * 1.018));
+        crater.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), V(THREE, event.direction));
+        targetVisual.group.add(crater);
+      }
       const debris = [];
       const point = V(THREE, event.point), normal = V(THREE, event.direction);
       const tangent = new THREE.Vector3(0, 1, 0).cross(normal).normalize();
@@ -222,15 +238,19 @@ export default {
         mesh.position.copy(point); group.add(mesh);
         debris.push({ mesh, velocity: direction.multiplyScalar(0.7 + event.speed * 0.32), life: 1.8 });
       }
-      effects.push({ group, ring, debris, age: 0, targetId: target.id });
-      state.impactSeen = true; status('Impacto: onda de choque e destroços lançados.'); audio.thud?.();
+      effects.push({ group, ring, wave, debris, age: 0, targetId: target.id });
+      state.impactSeen = true; state.lastImpactType = target.type;
+      status('Impacto: onda de choque e destroços lançados.'); audio.thud?.();
     }
     function updateEffects(dt) {
       for (let i = effects.length - 1; i >= 0; i--) {
         const effect = effects[i], target = state.bodies.find(body => body.id === effect.targetId);
         effect.age += dt;
-        effect.ring.scale.setScalar(0.02 + effect.age * 1.55);
+        effect.ring.scale.setScalar(Math.min(target?.radius * 0.65 || 0.3, 0.02 + effect.age * 0.8));
         effect.ring.material.opacity = Math.max(0, 0.9 * (1 - effect.age / 1.7));
+        if (target) effect.wave.position.copy(V(THREE, target.position));
+        effect.wave.scale.setScalar((target?.radius || 0.4) + effect.age * 0.75);
+        effect.wave.material.uniforms.opacity.value = Math.max(0, 0.8 * (1 - effect.age / 1.5));
         for (const debris of effect.debris) {
           if (debris.life <= 0) continue;
           debris.life -= dt;
