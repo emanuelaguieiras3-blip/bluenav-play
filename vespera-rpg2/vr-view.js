@@ -2,6 +2,7 @@
 // truth, so its current art, save data, combat and network play keep working.
 import * as THREE from './vendor/three.module.js';
 import { createSpatialWorld } from './vr-world.js';
+import { pinchMovement } from './vr-gesture.js';
 
 const worldCanvas = document.getElementById('world');
 const button = document.createElement('button');
@@ -62,6 +63,9 @@ function labelTexture(title, detail = '') {
 const questLabel = labelTexture('VÉSPERA', 'Comece sua aventura na tela antes de entrar em VR');
 const quest = new THREE.Mesh(new THREE.PlaneGeometry(2.85, .5), new THREE.MeshBasicMaterial({ map: questLabel.texture, transparent: true }));
 quest.position.set(0, 2.55, -2.1); scene.add(quest);
+const gestureLabel = labelTexture('MÃO ESQUERDA: PINÇA + MOVER', 'Mão direita: aponte e faça pinça para agir');
+const gestureHelp = new THREE.Mesh(new THREE.PlaneGeometry(2.35, .4), new THREE.MeshBasicMaterial({ map: gestureLabel.texture, transparent: true }));
+gestureHelp.position.set(0, 2.06, -1.9); scene.add(gestureHelp);
 
 const controls = [
   { title: '↑', key: 'w', x: -.75, y: .52 }, { title: '←', key: 'a', x: -.25, y: .52 },
@@ -90,21 +94,34 @@ function release(source) {
     targets.find(target => target.userData.key === key)?.scale.setScalar(1);
   }
   held.delete(source);
+  if (source === walkingSource) {
+    walkingSource = walkingAnchor = null;
+    window.GameSession?.setVRMovement?.(0, 0);
+  }
 }
 function press(source, ray) {
   raycaster.ray.copy(ray); raycaster.far = 3.5;
   const hit = raycaster.intersectObjects(targets, false)[0];
   if (hit) {
     const key = hit.object.userData.key; held.set(source, key); emitKey(key, true);
-    hit.object.scale.setScalar(.92); return;
+    hit.object.scale.setScalar(.92); return true;
   }
+  raycaster.far = 8;
   const choices = spatialWorld.interactables;
   const worldHit = raycaster.intersectObjects(choices.map(item => item.mesh), false)[0];
-  if (!worldHit) return;
+  if (!worldHit) return false;
   const choice = choices.find(item => item.mesh === worldHit.object);
   const player = window.GameSession?.player;
-  if (!choice || !player || Math.hypot(choice.entity.x - player.x, choice.entity.y - player.y) > 2.2) return;
-  window.GameSession.command(choice.kind === 'monster' ? 'attack' : 'interact');
+  if (!choice || !player || choice.kind === 'player') return false;
+  const distance = Math.hypot(choice.entity.x - player.x, choice.entity.y - player.y);
+  if (choice.kind === 'monster') {
+    if (distance >= (window.Vespera?.stats(player).range || 1.8)) return false;
+    window.GameSession.command('attack', { targetId: choice.entity.id });
+  } else {
+    if (distance > 2.2) return false;
+    window.GameSession.command('interact');
+  }
+  return true;
 }
 function handRay(frame, inputSource, reference) {
   const hand = inputSource.hand;
@@ -121,13 +138,67 @@ function handRay(frame, inputSource, reference) {
   const fingertip = new THREE.Vector3(tip.transform.position.x, tip.transform.position.y, tip.transform.position.z);
   const thumbtip = new THREE.Vector3(thumb.transform.position.x, thumb.transform.position.y, thumb.transform.position.z);
   const direction = fingertip.clone().sub(origin).normalize();
-  return { ray: new THREE.Ray(fingertip, direction), pinched: fingertip.distanceTo(thumbtip) < .028 };
+  return { ray: new THREE.Ray(fingertip, direction), pinchDistance: fingertip.distanceTo(thumbtip), wrist: new THREE.Vector3(wrist.transform.position.x, wrist.transform.position.y, wrist.transform.position.z) };
 }
-let activeSession = null, lastQuest = '';
+const jointNames = [
+  'wrist',
+  ...['thumb', 'index-finger', 'middle-finger', 'ring-finger', 'pinky-finger'].flatMap(finger =>
+    finger === 'thumb'
+      ? ['thumb-metacarpal', 'thumb-phalanx-proximal', 'thumb-phalanx-distal', 'thumb-tip']
+      : [`${finger}-metacarpal`, `${finger}-phalanx-proximal`, `${finger}-phalanx-intermediate`, `${finger}-phalanx-distal`, `${finger}-tip`]),
+];
+const bonePairs = [];
+for (let start = 1; start < jointNames.length;) {
+  const length = start === 1 ? 4 : 5;
+  bonePairs.push([0, start]);
+  for (let i = start; i < start + length - 1; i++) bonePairs.push([i, i + 1]);
+  start += length;
+}
+const handModels = new Map();
+const jointDummy = new THREE.Object3D();
+function updateHandModel(source, frame, reference) {
+  let model = handModels.get(source);
+  if (!model) {
+    const color = source.handedness === 'left' ? '#8ad8d1' : '#f3c58e';
+    const joints = new THREE.InstancedMesh(new THREE.SphereGeometry(.013, 8, 6), new THREE.MeshBasicMaterial({ color }), jointNames.length);
+    joints.frustumCulled = false;
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(bonePairs.length * 6), 3));
+    const bones = new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color, transparent: true, opacity: .85 }));
+    scene.add(joints, bones); model = { joints, bones }; handModels.set(source, model);
+  }
+  const positions = jointNames.map(name => {
+    const space = source.hand.get(name), pose = space && frame.getJointPose(space, reference);
+    return pose ? new THREE.Vector3(pose.transform.position.x, pose.transform.position.y, pose.transform.position.z) : null;
+  });
+  if (!positions[0]) { model.joints.visible = model.bones.visible = false; return; }
+  model.joints.visible = model.bones.visible = true;
+  positions.forEach((position, i) => {
+    jointDummy.position.copy(position || positions[0]); jointDummy.scale.setScalar(position ? 1 : .001);
+    jointDummy.updateMatrix(); model.joints.setMatrixAt(i, jointDummy.matrix);
+  });
+  model.joints.instanceMatrix.needsUpdate = true;
+  const points = model.bones.geometry.attributes.position;
+  bonePairs.forEach(([a, b], i) => {
+    const from = positions[a] || positions[0], to = positions[b] || from;
+    points.setXYZ(i * 2, from.x, from.y, from.z);
+    points.setXYZ(i * 2 + 1, to.x, to.y, to.z);
+  });
+  points.needsUpdate = true; model.bones.geometry.computeBoundingSphere();
+}
+function removeHandModel(source) {
+  const model = handModels.get(source); if (!model) return;
+  scene.remove(model.joints, model.bones);
+  model.joints.geometry.dispose(); model.joints.material.dispose();
+  model.bones.geometry.dispose(); model.bones.material.dispose(); handModels.delete(source);
+}
+let activeSession = null, lastQuest = '', helpMode = '';
 const rays = new Map();
+let walkingSource = null, walkingAnchor = null;
 let lastFrameTime = 0;
 renderer.setAnimationLoop((time, frame) => {
   if (!activeSession || !frame) return;
+  window.GameSession?.tickVR?.(time);
   spatialWorld.update(lastFrameTime ? (time - lastFrameTime) / 1000 : 0); lastFrameTime = time;
   canvasTexture.needsUpdate = true;
   const title = document.getElementById('quest-title')?.textContent?.trim() || 'Explore Véspera';
@@ -140,17 +211,37 @@ renderer.setAnimationLoop((time, frame) => {
     const hand = handRay(frame, source, reference);
     if (!hand) continue;
     seen.add(source);
+    updateHandModel(source, frame, reference);
     let line = rays.get(source);
     if (!line) {
       line = new THREE.ArrowHelper(new THREE.Vector3(0, 0, -1), new THREE.Vector3(), 1.5, '#f6d591', .11, .035);
       scene.add(line); rays.set(source, line);
     }
     line.position.copy(hand.ray.origin); line.setDirection(hand.ray.direction);
-    line.setColor(hand.pinched ? '#7ce4c0' : '#f6d591');
-    if (hand.pinched && !pinchedSources.has(source)) { pinchedSources.add(source); press(source, hand.ray); }
-    if (!hand.pinched && pinchedSources.has(source)) { pinchedSources.delete(source); release(source); }
+    const pinched = pinchedSources.has(source) ? hand.pinchDistance < .045 : hand.pinchDistance < .028;
+    line.setColor(pinched ? '#7ce4c0' : '#f6d591');
+    if (pinched && !pinchedSources.has(source)) {
+      pinchedSources.add(source);
+      const acted = press(source, hand.ray);
+      if (!acted && source.handedness === 'left') {
+        walkingSource = source; walkingAnchor = hand.wrist.clone();
+      }
+    }
+    if (pinched && source === walkingSource) {
+      const movement = pinchMovement(walkingAnchor, hand.wrist);
+      window.GameSession?.setVRMovement?.(movement.x, movement.y);
+    }
+    if (!pinched && pinchedSources.has(source)) { pinchedSources.delete(source); release(source); }
   }
   for (const source of pinchedSources) if (!seen.has(source)) { pinchedSources.delete(source); release(source); }
+  for (const source of handModels.keys()) if (!seen.has(source)) removeHandModel(source);
+  for (const [source, line] of rays) if (!seen.has(source)) { scene.remove(line); rays.delete(source); }
+  const nextHelp = seen.size ? 'hands' : 'controllers';
+  if (nextHelp !== helpMode) {
+    helpMode = nextHelp;
+    gestureLabel.set(nextHelp === 'hands' ? 'MÃO ESQUERDA: PINÇA + MOVER' : 'CONTROLES VR',
+      nextHelp === 'hands' ? 'Mão direita: aponte e faça pinça para agir' : 'Aponte e selecione os botões à frente');
+  }
   renderer.render(scene, camera);
 });
 
@@ -168,9 +259,12 @@ async function enterVR() {
     renderer.domElement.style.display = 'block'; button.textContent = 'Sair do VR';
     session.addEventListener('end', () => {
       for (const source of held.keys()) release(source);
+      if (walkingSource) release(walkingSource);
+      window.GameSession?.setVRMovement?.(0, 0);
       pinchedSources.clear(); lastFrameTime = 0;
       for (const line of rays.values()) scene.remove(line);
       rays.clear();
+      for (const source of handModels.keys()) removeHandModel(source);
       for (const mesh of targets) mesh.scale.setScalar(1);
       activeSession = null; renderer.domElement.style.display = 'none'; button.textContent = 'Entrar em VR';
     }, { once: true });
@@ -195,4 +289,4 @@ async function enterVR() {
 button.addEventListener('click', enterVR);
 if (!navigator.xr?.isSessionSupported) { button.disabled = true; button.title = 'Navegador sem WebXR'; }
 else navigator.xr.isSessionSupported('immersive-vr').then(supported => { button.disabled = !supported; if (!supported) button.title = 'Headset VR não detectado'; }).catch(() => { button.disabled = true; });
-window.VesperaVR = { button, scene, controls, spatialWorld, enterVR };
+window.VesperaVR = { button, scene, controls, spatialWorld, enterVR, get active() { return !!activeSession; } };
