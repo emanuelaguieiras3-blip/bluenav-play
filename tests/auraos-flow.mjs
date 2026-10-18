@@ -24,9 +24,14 @@ try {
   await page.mouse.click(card.x, card.y);
   if (!await page.waitForFunction(() => window.__aura.Engine.cur?.id === 'chem', null, { timeout: 8000 }).then(() => true, () => false)) throw Error('clicking the first hub card did not open ChemHands');
   await page.waitForTimeout(1500);
-  const watch = await screenOf('Watch.group');
-  await page.mouse.click(watch.x, watch.y);
-  if (!await page.waitForFunction(() => window.__aura.Engine.state === 'hub', null, { timeout: 8000 }).then(() => true, () => false)) throw Error('clicking the wrist watch did not return to the hub');
+  // Software rendering right after loading a module can take seconds per frame: retry the click.
+  let back = false;
+  for (let attempt = 0; attempt < 3 && !back; attempt++) {
+    const watch = await screenOf('Watch.group');
+    await page.mouse.move(watch.x, watch.y); await page.waitForTimeout(300); await page.mouse.click(watch.x, watch.y);
+    back = await page.waitForFunction(() => window.__aura.Engine.state === 'hub', null, { timeout: 6000 }).then(() => true, () => false);
+  }
+  if (!back) throw Error('clicking the wrist watch did not return to the hub');
   console.log('hub card click -> ChemHands, watch click -> hub: ok');
   if (process.env.AURA_GEMINI) {
     await page.evaluate(() => window.__aura.Engine.load('chem'));

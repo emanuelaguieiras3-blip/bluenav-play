@@ -21,7 +21,8 @@ canvas{display:block;touch-action:none}
 #boot .status{font-size:13px;color:var(--dim);margin-top:12px;min-height:1.2em}
 #help{position:fixed;left:16px;right:16px;bottom:14px;margin:auto;max-width:900px;padding:10px 14px;border-radius:14px;background:rgba(6,10,24,.72);border:1px solid var(--line);font-size:12.5px;color:var(--dim);line-height:1.5;z-index:4;pointer-events:none}
 #help b{color:var(--fg)}
-#help[hidden],#boot[hidden],#divider[hidden]{display:none}
+#help[hidden],#boot[hidden],#divider[hidden],#loading[hidden]{display:none}
+#loading{position:fixed;inset:0;display:grid;place-items:center;font:600 18px system-ui,sans-serif;color:#9fb8d8;background:#04050c;z-index:6}
 #divider{position:fixed;left:50%;top:0;bottom:0;width:3px;margin-left:-1px;background:#000;z-index:3;pointer-events:none}
 #boot{overflow-y:auto}
 </style>
@@ -35,7 +36,8 @@ canvas{display:block;touch-action:none}
 </script>
 </head>
 <body>
-<div id="boot">
+<div id="loading">A carregar…</div>
+<div id="boot" hidden>
   <div class="card">
     <h1>AURA OS XR</h1>
     <p>Biblioteca Espacial · 15 jogos da campanha <i>A Reconstrução da Realidade</i> e 5 experiências Lounge, com Hand Tracking nativo, áudio espacial e pós-processamento.</p>
@@ -303,7 +305,7 @@ function wrapText(g, text, x, y, maxW, lh, maxLines = 4) {
 }
 function textMesh(w, h, o = {}) {
   const px = o.px || 512, c = document.createElement('canvas'); c.width = px; c.height = Math.max(16, Math.round(px * h / w));
-  const g = c.getContext('2d'), tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
+  const g = c.getContext('2d'), tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
   const geo = o.R ? GEO.curvedPlane(w, h, o.R, o.seg || 24, o.z || 0) : new THREE.PlaneGeometry(w, h).translate(0, 0, o.z || 0);
   const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, toneMapped: false, opacity: o.opacity ?? 1 }));
   m.renderOrder = o.order ?? 3; m.cw = c.width; m.ch = c.height;
@@ -717,8 +719,9 @@ const HUD = {
   flash(msg, color = '#8ff') { this.st.status = msg; this.st.statusColor = color; this.statusT = 3.4; this.dirty = true; },
   result(ok, msg, kind) { this.st.result = { ok, msg, kind }; this.bCont.visible = kind === 'lounge' || ok; this.bRetry.visible = true; this.dirty = true; },
   place(k) {
-    _v1.copy(head).addScaledVector(headFwd, 0.95); _v1.y = head.y + 0.21;
-    this.group.position.lerp(_v1, k); faceTo(this.group, head); this.group.rotation.x = 0.1;
+    const card = CARD.on;
+    _v1.copy(head).addScaledVector(headFwd, card ? 0.8 : 0.95); _v1.y = head.y + (card ? 0.25 : 0.21);
+    this.group.position.lerp(_v1, k); faceTo(this.group, head); this.group.rotation.x = 0.1; this.group.scale.setScalar(card ? 1.3 : 1);
   },
   update(dt) {
     if (!this.group.visible) return; this.place(1 - Math.exp(-dt * 2.2));
@@ -758,7 +761,7 @@ const TUT = {
   },
   start(cfg) {
     if (!cfg || !settings.tutorial) return; this.cfg = cfg; this.active = true; this.t = 0; this.P = new V3(...cfg.pos); this.D = new V3(...(cfg.drag || [0.06, 0, 0]));
-    this.label.visible = true; this.label.position.copy(this.P).add(_v1.set(0, 0.11, 0));
+    this.label.visible = true; this.label.position.copy(this.P).add(_v1.set(0, 0.11, 0)); this.label.scale.setScalar(CARD.on ? 1.4 : 1);
     this.label.draw((g, W, H) => { rr(g, 4, 4, W - 8, H - 8, (H - 8) / 2); g.fillStyle = 'rgba(8,20,48,.78)'; g.fill(); g.strokeStyle = hex(themeColor()); g.lineWidth = 3; g.stroke(); g.fillStyle = '#fff'; g.font = `600 ${H * 0.42}px ${FONT}`; const tw = g.measureText('✋ ' + cfg.text).width; if (tw > W - 50) g.font = `600 ${H * 0.42 * (W - 50) / tw}px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('✋ ' + cfg.text, W / 2, H / 2 + 2); });
   },
   stop() { this.active = false; this.hands.forEach(h => h.setOpacity(0)); if (this.label) this.label.visible = false; },
@@ -804,10 +807,10 @@ const Watch = {
     this.screen.draw((g, W, H) => {
       g.beginPath(); g.arc(W / 2, H / 2, W * 0.48, 0, TAU); g.clip();
       const gr = g.createRadialGradient(W / 2, H * 0.35, 10, W / 2, H / 2, W * 0.5); gr.addColorStop(0, 'rgba(30,60,120,.9)'); gr.addColorStop(1, 'rgba(4,10,30,.95)'); g.fillStyle = gr; g.fillRect(0, 0, W, H);
-      g.textAlign = 'center'; g.fillStyle = '#fff'; g.font = `700 ${W * 0.24}px ${FONT}`; g.fillText(hh + ':' + mm, W / 2, H * 0.43);
-      g.font = `600 ${W * 0.075}px ${FONT}`; g.fillStyle = '#9fe8ff'; g.fillText('🔋 ' + bat + '   📶 ' + net, W / 2, H * 0.58);
+      g.textAlign = 'center'; g.fillStyle = '#fff'; g.font = `800 ${W * 0.27}px ${FONT}`; g.fillText(hh + ':' + mm, W / 2, H * 0.43);
+      g.font = `700 ${W * 0.088}px ${FONT}`; g.fillStyle = '#bff0ff'; g.fillText('🔋 ' + bat + '   📶 ' + net, W / 2, H * 0.58);
       g.fillStyle = handsOn ? '#7dffb0' : '#8899aa'; g.fillText((handsOn ? '● ' : '○ ') + 'Mãos Ativas' + (handsOn ? ' ×' + handsOn : ''), W / 2, H * 0.7);
-      g.fillStyle = '#ffd27a'; g.font = `700 ${W * 0.08}px ${FONT}`; g.fillText(Engine.state === 'exp' ? '⌂ HUB' : '◎ RECENTRAR', W / 2, H * 0.85);
+      g.fillStyle = '#ffd27a'; g.font = `800 ${W * 0.1}px ${FONT}`; g.fillText(Engine.state === 'exp' ? '⌂ HUB' : '◎ RECENTRAR', W / 2, H * 0.85);
     });
   },
   update(dt) {
@@ -891,7 +894,7 @@ const Engine = {
   },
   load(id) {
     const exp = EXPERIENCES.find(e => e.id === id); if (!exp) return;
-    this.unload(); this.state = 'exp'; this.cur = exp; Hub.group.visible = false; store.set('last', id);
+    this.unload(); this.state = 'exp'; this.cur = exp; Hub.group.visible = false; store.set('last', id); store.set('resume', id);
     const root = new THREE.Group(); anchor.add(root); this.root = root; const ctx = this.ctx = this.makeCtx(exp, root);
     HUD.show(exp); mouse.depth = exp.depth ?? 0.55; sky.material.uniforms.uTint.value.set(exp.sky ?? 0x2a1a5e);
     if (!renderer.xr.isPresenting && exp.tutorial) { const [x, y, z] = exp.tutorial.pos; mouse.yaw = 0; mouse.pitch = clamp(Math.atan2(y - 1.55, Math.hypot(x, z)) * 0.8, -0.7, 0.05); }
@@ -903,7 +906,7 @@ const Engine = {
     if (!this.root) return; try { this.inst?.dispose?.(); } catch (e) { console.error(e); }
     UI.clear('exp'); TUT.stop(); FX.clear(); disposeTree(this.root); anchor.remove(this.root); this.root = null; this.inst = null; this.ctx = null;
   },
-  toHub() { this.unload(); this.state = 'hub'; if (!renderer.xr.isPresenting) { mouse.yaw = 0; mouse.pitch = -0.12; } this.cur = null; Hub.group.visible = true; HUD.group.visible = false; sky.material.uniforms.uTint.value.set(0x2a1a5e); Hub.setView(Hub.view); mouse.depth = 0.55; },
+  toHub() { this.unload(); this.state = 'hub'; store.set('resume', null); if (!renderer.xr.isPresenting) { mouse.yaw = 0; mouse.pitch = -0.12; } this.cur = null; Hub.group.visible = true; HUD.group.visible = false; sky.material.uniforms.uTint.value.set(0x2a1a5e); Hub.setView(Hub.view); mouse.depth = 0.55; },
   finish(ok, msg) {
     const c = this.ctx; if (!c || c.done) return; c.done = true; HUD.result(ok, msg, this.cur.kind);
     if (ok) { progress[this.cur.id] = { done: true, t: Date.now() }; store.set('progress', progress); AUDIO.success(head); FX.burst(_v1.copy(HUD.group.position), { count: 120, speed: 0.9, color: this.cur.color, color2: 0xffffff, life: 1.6, size: 0.007 }); }
@@ -962,11 +965,12 @@ const Hub = {
     card.draw = () => art.draw((g, W, H) => {
       const gr = g.createLinearGradient(0, 0, W, H); gr.addColorStop(0, hex(col.clone().multiplyScalar(0.55).getHex())); gr.addColorStop(1, 'rgba(6,10,28,0.92)'); rr(g, 2, 2, W - 4, H - 4, 22); g.fillStyle = gr; g.fill();
       const rng = seeded(i * 31 + 7); g.strokeStyle = 'rgba(255,255,255,.08)'; g.lineWidth = 2; for (let k = 0; k < 7; k++) { g.beginPath(); g.arc(rng() * W, rng() * H, 20 + rng() * 90, 0, TAU); g.stroke(); }
-      g.font = `${H * 0.3}px ${FONT}`; g.textBaseline = 'top'; g.fillText(e.icon, 20, 18);
-      g.fillStyle = 'rgba(255,255,255,.7)'; g.font = `700 ${H * 0.075}px ${FONT}`; g.fillText(e.kind === 'game' ? 'CAMPANHA · ' + String(e.n).padStart(2, '0') : 'LOUNGE', 20, H * 0.47);
-      g.fillStyle = '#fff'; g.font = `800 ${H * 0.12}px ${FONT}`; wrapText(g, e.title, 20, H * 0.58, W - 40, H * 0.13, 1);
-      g.fillStyle = '#bcd2f0'; g.font = `${H * 0.078}px ${FONT}`; wrapText(g, e.sub, 20, H * 0.75, W - 40, H * 0.09, 2);
-      if (progress[e.id]?.done) { g.fillStyle = '#7dffb0'; g.font = `800 ${H * 0.09}px ${FONT}`; g.textAlign = 'right'; g.fillText('✓', W - 20, H * 0.47); g.textAlign = 'left'; }
+      const fit = (weight, size, text) => { g.font = `${weight} ${size}px ${FONT}`; const w = g.measureText(text).width; if (w > W - 36) g.font = `${weight} ${size * (W - 36) / w}px ${FONT}`; };
+      g.font = `${H * 0.24}px ${FONT}`; g.textBaseline = 'top'; g.fillText(e.icon, 18, 14);
+      g.fillStyle = '#d6e4ff'; g.font = `700 ${H * 0.09}px ${FONT}`; g.fillText(e.kind === 'game' ? 'CAMPANHA ' + String(e.n).padStart(2, '0') : 'LOUNGE', 18, H * 0.36);
+      g.fillStyle = '#fff'; fit(800, H * 0.17, e.title); g.fillText(e.title, 18, H * 0.49);
+      g.fillStyle = '#e2ecff'; fit(600, H * 0.115, e.sub); g.fillText(e.sub, 18, H * 0.71);
+      if (progress[e.id]?.done) { g.fillStyle = '#7dffb0'; g.font = `800 ${H * 0.12}px ${FONT}`; g.textAlign = 'right'; g.fillText('✓', W - 18, H * 0.36); g.textAlign = 'left'; }
     });
     card.draw();
     UI.add(group, () => Engine.load(e.id), { hit: slab, w, h, onHover: (hv, push) => { vis.position.z = Math.min(0.03 * hv, Math.max(-0.006, push - 0.008)); vis.scale.setScalar(1 + hv * 0.07); mat.userData.rimS.value = 0.6 + hv * 2; emb.userData.spin = 0.6 + hv * 5; } });
@@ -1013,7 +1017,7 @@ const Hub = {
     this.clockT -= dt;
     if (this.clockT <= 0) {
       this.clockT = 1; const d = new Date();
-      this.hdrText.draw((g, W, H) => { const gr = g.createLinearGradient(0, 0, W, 0); gr.addColorStop(0, '#7ff0ff'); gr.addColorStop(1, '#c9a8ff'); g.fillStyle = gr; g.font = `800 ${H * 0.31}px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('AURA OS XR  |  BIBLIOTECA ESPACIAL', W / 2, H / 2); g.font = `600 ${H * 0.22}px ${FONT}`; g.fillStyle = '#cfe0f8'; g.textAlign = 'right'; g.fillText(d.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' }), W - 30, H / 2); g.textAlign = 'left'; g.fillText('◉ ' + (renderer.xr.isPresenting ? (Engine.isAR ? 'AR' : 'VR') : 'DESKTOP'), 30, H / 2); });
+      this.hdrText.draw((g, W, H) => { const gr = g.createLinearGradient(0, 0, W, 0); gr.addColorStop(0, '#7ff0ff'); gr.addColorStop(1, '#c9a8ff'); g.fillStyle = gr; g.font = `800 ${H * 0.31}px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('AURA OS XR  |  BIBLIOTECA ESPACIAL', W / 2, H / 2); g.font = `600 ${H * 0.22}px ${FONT}`; g.fillStyle = '#cfe0f8'; g.textAlign = 'right'; g.fillText(d.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' }), W - 30, H / 2); g.textAlign = 'left'; g.fillText('◉ ' + (renderer.xr.isPresenting ? (Engine.isAR ? 'AR' : 'VR') : CARD.on ? 'VR BOX' : 'DESKTOP'), 30, H / 2); });
     }
     for (const c of this.cards) if (c.group.visible) { c.emb.rotation.y += dt * (c.emb.userData.spin ?? 0.6); c.emb.rotation.x += dt * 0.3; }
     this.knot.rotation.y += dt * 0.1; this.knot.rotation.z += dt * 0.05; this.gp.rotation.y += dt * 0.03; this.env.visible = !Engine.isAR;
@@ -2573,9 +2577,9 @@ addEventListener('keydown', e => {
 addEventListener('keyup', e => { const k = e.key.toLowerCase(); mouse.keys.delete(k); if (e.key === 'Shift' && !CARD.on) mouse.shift = false; if (k === 'e') mouse.palms = false; });
 addEventListener('blur', () => { mouse.keys.clear(); mouse.shift = mouse.palms = mouse.down = mouse.look = false; });
 
-function startDesktop() { AUDIO.init(); boot.hidden = true; help.hidden = false; }
+function startDesktop() { AUDIO.init(); boot.hidden = true; help.hidden = false; store.set('mode', 'flat'); }
 async function startCardboard() {
-  AUDIO.init(); CARD.on = true; boot.hidden = true; help.hidden = true; $('divider').hidden = false; mouse.ndc.set(0, 0); mouse.pitch = 0; fitView();
+  AUDIO.init(); CARD.on = true; boot.hidden = true; help.hidden = true; $('divider').hidden = false; store.set('mode', 'cardboard'); mouse.ndc.set(0, 0); mouse.pitch = 0; fitView();
   orient.connect();
   // Fullscreen, landscape lock and iOS motion permission need a user gesture: the first tap grants them.
   const gesture = async () => {
@@ -2608,9 +2612,16 @@ if (pendingExp) {
   // Quest Browser can hand an immersive session to the next page without a new tap.
   navigator.xr?.addEventListener?.('sessiongranted', () => startXR(pendingExp.id === 'koi' ? 'immersive-ar' : 'immersive-vr').then(openPending));
 }
-// Opened from the BlueNav library: continue in the same mode, without the start screen.
-if (launchMode === 'cardboard') { startCardboard(); openPending(); }
-else if (launchMode === 'flat') { startDesktop(); openPending(); }
+// No start screen: open in the BlueNav mode (or the one used last time) and resume the last game.
+// Only a WebXR headset (Quest) still needs one tap, because the browser requires it to enter VR.
+const headset = /OculusBrowser|Quest|Pico/i.test(navigator.userAgent);
+const resumeExp = pendingExp || EXPERIENCES.find(e => e.id === store.get('resume', null)) || null;
+const startMode = launchMode === 'cardboard' || launchMode === 'flat' ? launchMode : store.get('mode', null) || (matchMedia('(pointer: coarse)').matches ? 'cardboard' : 'flat');
+$('loading').hidden = true;
+if (!qp.has('desk') && !qp.has('card')) {
+  if (headset && launchMode !== 'cardboard' && launchMode !== 'flat') boot.hidden = false;
+  else { startMode === 'cardboard' ? startCardboard() : startDesktop(); if (resumeExp) Engine.load(resumeExp.id); }
+}
 if (navigator.xr) {
   Promise.all(['immersive-vr', 'immersive-ar'].map(m => navigator.xr.isSessionSupported(m).catch(() => false))).then(([vr, ar]) => {
     bVR.disabled = !vr; bAR.disabled = !ar;
