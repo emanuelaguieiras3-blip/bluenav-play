@@ -27,7 +27,10 @@ for (let i = 0; i < 200 && r3 !== 'hub'; i++) {
   r3 = await p.evaluate(() => { const a = window.__aura, wp = a.Watch.group.getWorldPosition(new a.THREE.Vector3()), cp = a.camera.getWorldPosition(new a.THREE.Vector3()), d = wp.sub(cp); a.mouse.yaw = Math.atan2(-d.x, -d.z); a.mouse.pitch = Math.atan2(d.y, Math.hypot(d.x, d.z)); return a.Engine.state; });
   await p.waitForTimeout(100);
 }
-const result = { watchOnScreen: w.onScreen, tapWatch: r1, tapCardRightEye: r2, gazeWatch: r3 };
-assert.deepEqual(result, { watchOnScreen: true, tapWatch: 'hub', tapCardRightEye: aimed, gazeWatch: 'hub' }); assert.deepEqual(errs, []);
-console.log('VR Box watch: tap, tap in right eye and gaze all work: OK');
+await p.waitForFunction(() => window.__aura.UI.items.find(i => i.obj === window.__aura.Watch.group).cool <= 0, null, { timeout: 10000 });
+const w2 = await eye('Watch.group', 1); await p.touchscreen.tap(w2.x, w2.y);
+const home = await p.waitForURL(/index\.html\?auto=cardboard&hands=1/, { timeout: 15000 }).then(() => p.waitForFunction(() => window.__app?.mode === 'cardboard', null, { timeout: 30000 })).then(() => 'bluenav', () => p.url());
+const result = { watchOnScreen: w.onScreen, tapWatch: r1, tapCardRightEye: r2, gazeWatch: r3, hubWatch: home };
+assert.deepEqual(result, { watchOnScreen: true, tapWatch: 'hub', tapCardRightEye: aimed, gazeWatch: 'hub', hubWatch: 'bluenav' }); assert.deepEqual(errs, []);
+console.log('VR Box watch: tap, tap in right eye, gaze, and hub watch -> BlueNav in VR Box: OK');
 await b.close();

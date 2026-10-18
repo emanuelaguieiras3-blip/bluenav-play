@@ -309,7 +309,7 @@ function textMesh(w, h, o = {}) {
   const geo = o.R ? GEO.curvedPlane(w, h, o.R, o.seg || 24, o.z || 0) : new THREE.PlaneGeometry(w, h).translate(0, 0, o.z || 0);
   const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, toneMapped: false, opacity: o.opacity ?? 1 }));
   m.renderOrder = o.order ?? 3; m.cw = c.width; m.ch = c.height;
-  m.draw = fn => { g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, c.width, c.height); fn(g, c.width, c.height); tex.needsUpdate = true; return m; };
+  m.draw = fn => { g.setTransform(1, 0, 0, 1, 0, 0); g.textAlign = 'left'; g.textBaseline = 'alphabetic'; g.shadowBlur = 0; g.globalAlpha = 1; g.clearRect(0, 0, c.width, c.height); fn(g, c.width, c.height); tex.needsUpdate = true; return m; };
   return m;
 }
 const hex = n => '#' + new C3(n).getHexString();
@@ -614,8 +614,9 @@ const HandVis = {
       v.ghost.setOpacity(ghostOn ? 0.42 : 0);
       if (ghostOn) { v.ghost.setPinch(H.pinch ? 1 : (H.src === 'ctrl' ? 0.2 : 0.1)); v.ghost.place(H.pinchPos, H.src === 'mouse' ? _q2.copy(headQ).multiply(H.side === 'right' ? this.tiltR : this.tiltL) : H.rot); }
       v.cursor.visible = H.active && !CARD.on; if (v.cursor.visible) { v.cursor.position.copy(H.pinchPos); v.cursor.quaternion.copy(headQ); const s = H.pinch ? 0.55 : 1 + clamp((H.pinchDist - 0.02) * 10, 0, 0.6); v.cursor.scale.setScalar(s); }
-      const showRay = H.active && H.src !== 'mouse' && (H.rayHit || (Engine.state === 'hub' && !H.nearUI));
-      v.ray.visible = showRay; v.dot.visible = showRay && !!H.rayHit;
+      const showRay = H.active && H.src === 'ctrl' && (H.rayHit || (Engine.state === 'hub' && !H.nearUI));
+      v.ray.visible = showRay; v.dot.visible = H.active && H.src !== 'mouse' && !!H.rayHit;
+      if (v.dot.visible) v.dot.position.copy(H.rayHitPos);
       if (showRay) {
         const p = v.ray.geometry.attributes.position, end = H.rayHit ? H.rayHitPos : _v1.copy(H.rayO).addScaledVector(H.rayD, 0.6);
         p.setXYZ(0, H.rayO.x, H.rayO.y, H.rayO.z); p.setXYZ(1, end.x, end.y, end.z); p.needsUpdate = true; if (H.rayHit) v.dot.position.copy(end);
@@ -809,7 +810,7 @@ const Watch = {
     this.screen = textMesh(0.046, 0.046, { px: 256, z: 0.0042 }); g.add(this.screen);
     const band = new THREE.CatmullRomCurve3([new V3(0, 0.028, -0.004), new V3(0, 0.04, -0.025), new V3(0, 0.02, -0.05), new V3(0, -0.02, -0.05), new V3(0, -0.04, -0.025), new V3(0, -0.028, -0.004)]);
     for (const dx of [-0.012, 0.012]) { const b = new THREE.Mesh(new THREE.TubeGeometry(band, 32, 0.0028, 6, false), caseM); b.position.x = dx; g.add(b); }
-    UI.add(g, () => { if (Engine.state === 'exp') Engine.toHub(); else { Hub.setView('home'); Engine.recenter(); } }, { hit: face, w: 0.05, h: 0.05, far: true });
+    UI.add(g, () => { if (Engine.state === 'exp') Engine.toHub(); else goBlueNav(); }, { hit: face, w: 0.05, h: 0.05, far: true });
     navigator.getBattery?.().then(b => { this.batt = b; }).catch(() => { });
     this.draw();
   },
@@ -823,7 +824,7 @@ const Watch = {
       g.textAlign = 'center'; g.fillStyle = '#fff'; g.font = `800 ${W * 0.27}px ${FONT}`; g.fillText(hh + ':' + mm, W / 2, H * 0.43);
       g.font = `700 ${W * 0.088}px ${FONT}`; g.fillStyle = '#bff0ff'; g.fillText('🔋 ' + bat + '   📶 ' + net, W / 2, H * 0.58);
       g.fillStyle = handsOn ? '#7dffb0' : '#8899aa'; g.fillText((handsOn ? '● ' : '○ ') + 'Mãos Ativas' + (handsOn ? ' ×' + handsOn : ''), W / 2, H * 0.7);
-      g.fillStyle = '#ffd27a'; g.font = `800 ${W * 0.1}px ${FONT}`; g.fillText(Engine.state === 'exp' ? '⌂ HUB' : '◎ RECENTRAR', W / 2, H * 0.85);
+      g.fillStyle = '#ffd27a'; g.font = `800 ${W * 0.1}px ${FONT}`; g.fillText(Engine.state === 'exp' ? '⌂ HUB' : '⌂ MENU INICIAL', W / 2, H * 0.85);
     });
   },
   update(dt) {
@@ -2590,6 +2591,13 @@ addEventListener('keydown', e => {
 addEventListener('keyup', e => { const k = e.key.toLowerCase(); mouse.keys.delete(k); if (e.key === 'Shift' && !CARD.on) mouse.shift = false; if (k === 'e') mouse.palms = false; });
 addEventListener('blur', () => { mouse.keys.clear(); mouse.shift = mouse.palms = mouse.down = mouse.look = false; });
 
+// Wrist watch in the AuraOS hub: back to the BlueNav start menu, in the same mode.
+async function goBlueNav() {
+  const mode = CARD.on ? 'cardboard' : renderer.xr.isPresenting ? null : 'flat';
+  store.set('resume', null);
+  await renderer.xr.getSession()?.end();
+  location.assign(new URL('index.html' + (mode ? `?auto=${mode}${mode === 'cardboard' ? '&hands=1' : ''}` : ''), location.href).href);
+}
 function startDesktop() { AUDIO.init(); boot.hidden = true; help.hidden = false; store.set('mode', 'flat'); }
 async function startCardboard() {
   AUDIO.init(); CARD.on = true; boot.hidden = true; help.hidden = true; $('divider').hidden = false; store.set('mode', 'cardboard'); mouse.ndc.set(0, 0); mouse.pitch = 0; fitView();

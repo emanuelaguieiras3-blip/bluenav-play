@@ -11,8 +11,11 @@ const CONFIRM_HOLD = 0.45; // s com o dedo no botão quando o Gemini pede confir
 const NEAR_MISS_DEPTH = 0.035; // m: dedo parado à frente do botão sem tocar
 const NEAR_MISS_DWELL = 0.45;  // s parado perto antes de perguntar ao Gemini
 const NEAR_MISS_CONFIDENCE = 0.75;
+const CONTACT_CONFIDENCE = 0.6; // Gemini decides a fingertip collision with at least this confidence
+const BUTTON_TRAVEL = 0.012;     // m: how far a button sinks under the fingertip
 
 const SWIPE_ANGLE = 0.11; // ~6° de movimento antes de virar arrasto
+const clampTravel = d => Math.max(0, Math.min(BUTTON_TRAVEL, d));
 
 export class UI {
   constructor(app) {
@@ -111,7 +114,7 @@ export class UI {
       if (s.seen) continue;
       if (s.drag) { s.drag.end?.(s.lastP); s.drag = null; s.dragMesh = null; }
       this._clearHover(s); s.press = null;
-      s.cursor.visible = false; s.line.visible = false; s.confirm = null; if (s.hint) s.hint.visible = false;
+      s.cursor.visible = false; s.line.visible = false; this._unsink(s); s.confirm = null; if (s.hint) s.hint.visible = false;
       if (!input._ptrs?.has(id)) {
         if (s.hint) { s.hint.material.map.dispose(); s.hint.material.dispose(); s.hint.geometry.dispose(); s.hint.removeFromParent(); }
         s.cursor.traverse((o) => { o.geometry?.dispose(); o.material?.dispose(); });
@@ -137,14 +140,14 @@ export class UI {
     if (p.stale && !p.system) {
       // Tracking dropout is not a release. Keep the grab, suppress new actions.
       s.press = null; s.prevTip = null; s.contact.suspend(); s.confirm = null; this._showHint(s, null);
-      this._clearHover(s); s.cursor.visible = false; s.line.visible = false;
+      this._clearHover(s); s.cursor.visible = false; s.line.visible = false; this._unsink(s);
       return;
     }
     if (p.system) {
       if (s.drag) s.drag.end?.(p);
       s.drag = null; s.dragMesh = null; s.press = null;
       this._clearHover(s); s.tap = null; s.tapArmed = undefined;
-      s.cursor.visible = false; s.line.visible = false;
+      s.cursor.visible = false; s.line.visible = false; this._unsink(s);
       s.prevTip = null; s.contact.reset(); s.confirm = null; this._showHint(s, null);
       return;
     }
@@ -209,12 +212,19 @@ export class UI {
       }
     } else if (sub) s.hoverSub = sub;
     const advice = poking && sub?.onClick ? this._advice(sub, hit.object) : null;
+    // Distance track of the fingertip on this button, shared by both Gemini paths.
+    if (poking && sub?.onClick) {
+      if (!s.trace || s.trace.key !== key) s.trace = { key, t: 0, samples: [] };
+      s.trace.t += dt; s.trace.samples.push([Math.round(-s.pokeDepth * 1000), Math.round(s.trace.t * 1000)]); if (s.trace.samples.length > 16) s.trace.samples.shift();
+    } else s.trace = null;
     if (pokeClick && sub?.onClick && !s.drag) {
       s.press = null;
       // Gemini marked this button as risky: keep the finger on it to confirm.
       if (advice?.confirmar) s.confirm = { key, t: 0 };
-      else this._fire(s, sub, hit.object);
+      else this._contactClick(s, sub, hit.object, key);
     }
+    if (s.verdict?.key === key && s.verdict.ready) { const v = s.verdict; s.verdict = null; if (v.press) this._fire(s, v.sub, v.mesh); }
+    else if (s.verdict && performance.now() - s.verdict.at > 4000) s.verdict = null;
     // Near miss: the fingertip stops just in front of a button and the contact test
     // does not fire (camera depth error). Gemini judges the approach once; a
     // confident "press" clicks once. Risky buttons still need a real touch.
@@ -227,6 +237,12 @@ export class UI {
       if (!near.asked && !near.fired && near.t >= NEAR_MISS_DWELL) { near.asked = true; assist.judge(this._label(sub, hit.object), near.samples).then(v => { near.verdict = v; }); }
       if (!near.fired && near.verdict?.pressionar && near.verdict.confianca >= NEAR_MISS_CONFIDENCE) { near.fired = true; s.contact.suspend(); this._fire(s, sub, hit.object); }
     } else if (!poking || key !== s.near?.key || s.pokeDepth <= -NEAR_MISS_DEPTH) s.near = null; // re-arm only after the finger leaves
+    const sinkObj = poking && sub?.onClick ? (sub.press || hit.object.userData.ui.press) : null;
+    if (s.sink && s.sink !== sinkObj) { s.sink.position.z = s.sink.userData.restZ; s.sink = null; }
+    if (sinkObj) {
+      if (sinkObj.userData.restZ == null) sinkObj.userData.restZ = sinkObj.position.z;
+      sinkObj.position.z = sinkObj.userData.restZ - clampTravel(s.pokeDepth + margin); s.sink = sinkObj;
+    }
     if (s.confirm) {
       const touching = poking && key === s.confirm.key && s.pokeDepth >= -0.012;
       if (!touching) s.confirm = null;
@@ -303,7 +319,8 @@ export class UI {
     col.setW(0, 0.45 + 0.3 * strength + 0.2 * near);
     col.setW(1, sub ? 0.25 + 0.4 * near : 0.02);
     col.needsUpdate = true;
-    s.line.visible = !gaze && !poking && !p.system && !p.hideRay;
+    // Hands get no ray line: the cursor marks the target and the fingertip touches it.
+    s.line.visible = !gaze && !poking && !p.system && !p.hideRay && p.source !== 'hand';
   }
 
   // Gemini hint for the button under the fingertip (null when Gemini is off).
@@ -354,12 +371,25 @@ export class UI {
     }
   }
 
+  // A fingertip collided with a button: Gemini judges the approach; without Gemini the contact clicks.
+  _unsink(s) { if (s.sink) { s.sink.position.z = s.sink.userData.restZ; s.sink = null; } }
+
+  _contactClick(s, sub, mesh, key) {
+    const assist = this.app.hands?.gemini?.buttons;
+    if (!assist?.active) { this._fire(s, sub, mesh); return; }
+    const verdict = s.verdict = { key, sub, mesh, at: performance.now(), ready: false, press: false };
+    assist.judge(this._label(sub, mesh), s.trace?.samples || [], 'colisao').then(v => {
+      if (s.verdict !== verdict) return;
+      verdict.press = v ? v.pressionar && v.confianca >= CONTACT_CONFIDENCE : true; verdict.ready = true;
+    });
+  }
+
   _fire(s, sub, mesh) {
     s.fired = true;
     s.flash = 0.2;
     const u = mesh.userData.ui;
     const obj = sub.press || u.press;
-    if (obj && !this.presses.some((q) => q.obj === obj)) this.presses.push({ obj, t: 0, z0: obj.position.z });
+    if (obj && !this.presses.some((q) => q.obj === obj)) this.presses.push({ obj, t: 0, z0: obj.userData.restZ ?? obj.position.z });
     if (u.sound !== false && sub.sound !== false) (sub.keySound || u.keySound ? this.app.audio.keyTap() : this.app.audio.click());
     try { sub.onClick(sub, mesh); } catch (e) { console.error(e); }
   }

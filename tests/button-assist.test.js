@@ -53,7 +53,9 @@ test('near-miss judge sends only the label and the distance track, and stays off
     assert.equal(bodies.length, 0);
     gemini.enabled = true;
     assert.deepEqual(await assist.judge('Abrir jogo', samples), { pressionar: true, confianca: 0.85 });
-    assert.deepEqual(JSON.parse(bodies[0].contents[0].parts[0].text), { botao: 'Abrir jogo', amostras: samples });
+    assert.deepEqual(JSON.parse(bodies[0].contents[0].parts[0].text), { botao: 'Abrir jogo', evento: 'quase', amostras: samples });
+    await assist.judge('Abrir jogo', [[4, 0], [0, 40], [-6, 80]], 'colisao');
+    assert.equal(JSON.parse(bodies[1].contents[0].parts[0].text).evento, 'colisao');
     assert.match(bodies[0].systemInstruction.parts[0].text, /pressionar/);
   } finally { globalThis.fetch = oldFetch; CONFIG.GEMINI_API_KEY = oldKey; CONFIG.GEMINI_PROXY_URL = oldProxy; }
 });

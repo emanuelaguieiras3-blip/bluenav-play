@@ -17,8 +17,9 @@ Sem texto extra.`;
 
 export const INTENT_PROMPT = `Você decide se uma pessoa quer apertar um botão em VR.
 A mão é rastreada pela câmera do celular, que erra a profundidade em 1 a 3 cm.
-Recebe o texto do botão e amostras [distancia_mm, tempo_ms]: distância da ponta do indicador até a superfície do botão (positivo = à frente, ainda sem tocar).
-Quem quer apertar se aproxima e para perto (menos de ~25 mm) ou continua empurrando na direção do botão. Quem só passa, oscila longe ou se afasta não quer apertar.
+Recebe o texto do botão, o tipo de evento ("colisao": o dedo bateu no botão; "quase": parou perto sem tocar) e amostras [distancia_mm, tempo_ms]: distância da ponta do indicador até a superfície do botão (positivo = à frente; 0 ou negativo = tocando ou afundando o botão).
+Evento "colisao": é clique quando o dedo vem de longe (mais de ~15 mm) e chega ao botão (0 mm ou menos), mesmo que pare logo. Não é clique o raspão: o dedo já estava perto (menos de ~8 mm) sem vir de longe, mal entra (não passa de -2 mm) e logo se afasta.
+Evento "quase": como a câmera erra a profundidade, um dedo que se aproximou e ficou parado a menos de ~25 mm É clique; não é clique quando o dedo se afasta ou oscila longe (mais de ~25 mm).
 Responda APENAS com JSON válido: {"pressionar": true|false, "confianca": número de 0 a 1}. Sem texto extra.`;
 
 export function parseIntentReply(text) {
@@ -65,12 +66,12 @@ export class ButtonAssist {
   }
 
   // Gemini's verdict on a fingertip that stopped just short of a button, or null.
-  async judge(label, samples) {
+  async judge(label, samples, evento = 'quase') {
     label = String(label || '').trim().slice(0, 80);
     if (!label || !this.active || this.judging || performance.now() < this.nextAt) return null;
     this.judging = true;
     try {
-      const text = await this._call(INTENT_PROMPT, { botao: label, amostras: samples.slice(-16) }, 60);
+      const text = await this._call(INTENT_PROMPT, { botao: label, evento, amostras: samples.slice(-16) }, 60);
       const verdict = parseIntentReply(text);
       this.status = verdict ? `toque ${verdict.pressionar ? 'confirmado' : 'recusado'} pelo Gemini` : 'resposta inválida';
       return verdict;

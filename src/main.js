@@ -117,6 +117,7 @@ $('gemini-save').addEventListener('click', () => {
 // ?auto=flat&game=racing — abre direto (útil para testar)
 const auto = new URLSearchParams(location.search).get('auto');
 if (auto) {
-  $('chk-hands').checked = false;
+  // ?hands=1 keeps camera hand tracking on (used when AuraOS sends the player back in VR Box).
+  if (!new URLSearchParams(location.search).has('hands')) $('chk-hands').checked = false;
   go(auto);
 }

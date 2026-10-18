@@ -57,5 +57,15 @@ try {
   }
   await page.evaluate(() => window.__aura.Engine.toHub());
   if (errors.length) throw Error(errors.join('\n'));
+  await page.waitForTimeout(1500);
+  const title = await page.evaluate(() => { const c = window.__aura.Hub.panTitle.material.map.image, g = c.getContext('2d'), d = g.getImageData(0, 0, c.width / 2, c.height).data; let ink = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 128) ink++; return ink; });
+  if (title < 2000) throw Error('hub panel title is not drawn on the left half (' + title + ' px)');
+  await page.screenshot({ path: 'artifacts/auraos/hub-after.png' });
   console.log('AuraOS: 20 experiences load and run without errors');
+  // In the hub the wrist watch leads back to the BlueNav start menu, in the same mode.
+  const hubWatch = await screenOf('Watch.group');
+  await page.mouse.move(hubWatch.x, hubWatch.y); await page.waitForTimeout(300); await page.mouse.click(hubWatch.x, hubWatch.y);
+  await page.waitForURL(/index\.html\?auto=flat/, { timeout: 15000 });
+  await page.waitForFunction(() => window.__app?.mode === 'flat', null, { timeout: 30000 });
+  console.log('hub title drawn, hub watch -> BlueNav start menu: ok');
 } finally { await browser.close(); }
