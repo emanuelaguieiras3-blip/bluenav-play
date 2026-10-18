@@ -47,20 +47,21 @@ async function testCamera() {
 $('camera-test').addEventListener('click', testCamera);
 $('camera-facing').addEventListener('change', () => { if (previewTracker) stopPreview(true); });
 $('camera-setup').addEventListener('toggle', () => { if (!$('camera-setup').open && previewTracker) stopPreview(true); });
-fetch('/api/gemini/status').then(response => response.ok ? response.json() : null).then(info => {
-  if (!info?.available || CONFIG.GEMINI_API_KEY) return;
+// The site's own server holds the Gemini key; when it does, the key field is not needed.
+const geminiServer = fetch('/api/gemini/status', { cache: 'no-store' }).then(response => response.ok ? response.json() : null).then(info => {
+  if (!info?.available || CONFIG.GEMINI_API_KEY) return false;
   CONFIG.GEMINI_PROXY_URL = '/api/gemini';
-  $('gemini-status').textContent = 'Gemini configurado no servidor local.';
-}).catch(() => {});
+  $('gemini-setup').hidden = true;
+  $('gemini-status').textContent = 'Gemini integrado no servidor.';
+  $('chk-gemini').parentElement.lastChild.textContent = ' Calibrar mãos da câmera com Gemini (integrado)';
+  if ($('chk-hands').checked) $('chk-gemini').checked = true;
+  return true;
+}).catch(() => false);
 
 async function go(mode, initialGame = null) {
   stopPreview(false);
-  if ($('chk-gemini').checked && !CONFIG.GEMINI_API_KEY && !CONFIG.GEMINI_PROXY_URL) {
-    $('gemini-setup').open = true;
-    status('Configure a chave Gemini ou desmarque a calibração para entrar em VR.');
-    $('gemini-key').focus();
-    return;
-  }
+  await geminiServer;
+  if ($('chk-gemini').checked && !CONFIG.GEMINI_API_KEY && !CONFIG.GEMINI_PROXY_URL) $('chk-gemini').checked = false;
   try {
     status('Iniciando…');
     if (!app) app = new App();
@@ -95,7 +96,7 @@ $('gemini-status').textContent = configured() ? 'Gemini configurado. A resposta 
 $('chk-gemini').addEventListener('change', () => {
   if (!$('chk-gemini').checked) { status('Pronto.'); return; }
   $('chk-hands').checked = true;
-  if (!configured()) { $('gemini-setup').open = true; $('gemini-key').focus(); }
+  if (!configured()) geminiServer.then(ok => { if (!ok && !configured()) { $('gemini-setup').open = true; $('gemini-key').focus(); } });
 });
 $('chk-hands').addEventListener('change', () => {
   if (!$('chk-hands').checked) { $('chk-gemini').checked = false; status('Pronto.'); }
