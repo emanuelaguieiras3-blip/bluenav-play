@@ -8,6 +8,9 @@ import { CONFIG } from '../../config.js';
 import { FingerContact } from '../hands/fingerContact.js';
 
 const CONFIRM_HOLD = 0.45; // s com o dedo no botão quando o Gemini pede confirmação
+const NEAR_MISS_DEPTH = 0.035; // m: dedo parado à frente do botão sem tocar
+const NEAR_MISS_DWELL = 0.45;  // s parado perto antes de perguntar ao Gemini
+const NEAR_MISS_CONFIDENCE = 0.75;
 
 const SWIPE_ANGLE = 0.11; // ~6° de movimento antes de virar arrasto
 
@@ -212,6 +215,18 @@ export class UI {
       if (advice?.confirmar) s.confirm = { key, t: 0 };
       else this._fire(s, sub, hit.object);
     }
+    // Near miss: the fingertip stops just in front of a button and the contact test
+    // does not fire (camera depth error). Gemini judges the approach once; a
+    // confident "press" clicks once. Risky buttons still need a real touch.
+    const assist = this.app.hands?.gemini?.buttons, margin = s.contact.profile.marginMm / 1000;
+    if (poking && sub?.onClick && assist?.active && !pokeClick && !s.confirm && !s.drag && !advice?.confirmar
+        && s.pokeDepth < -margin && s.pokeDepth > -NEAR_MISS_DEPTH) {
+      if (!s.near || s.near.key !== key) s.near = { key, t: 0, samples: [], asked: false, verdict: null };
+      const near = s.near; near.t += dt;
+      near.samples.push([Math.round(-s.pokeDepth * 1000), Math.round(near.t * 1000)]); if (near.samples.length > 16) near.samples.shift();
+      if (!near.asked && !near.fired && near.t >= NEAR_MISS_DWELL) { near.asked = true; assist.judge(this._label(sub, hit.object), near.samples).then(v => { near.verdict = v; }); }
+      if (!near.fired && near.verdict?.pressionar && near.verdict.confianca >= NEAR_MISS_CONFIDENCE) { near.fired = true; s.contact.suspend(); this._fire(s, sub, hit.object); }
+    } else if (!poking || key !== s.near?.key || s.pokeDepth <= -NEAR_MISS_DEPTH) s.near = null; // re-arm only after the finger leaves
     if (s.confirm) {
       const touching = poking && key === s.confirm.key && s.pokeDepth >= -0.012;
       if (!touching) s.confirm = null;
@@ -295,9 +310,12 @@ export class UI {
   _advice(sub, mesh) {
     const assist = this.app.hands?.gemini?.buttons;
     if (!assist?.active) return null;
+    return assist.lookup(this._label(sub, mesh), this.app.menu?.open ? 'menu do sistema' : 'jogo ' + (this.app.gameId || ''));
+  }
+
+  _label(sub, mesh) {
     const raw = sub.label ?? mesh.userData.ui.label;
-    const label = typeof raw === 'function' ? raw() : raw;
-    return assist.lookup(label, this.app.menu?.open ? 'menu do sistema' : 'jogo ' + (this.app.gameId || ''));
+    return typeof raw === 'function' ? raw() : raw;
   }
 
   _showHint(s, text, point) {

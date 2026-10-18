@@ -1,4 +1,5 @@
-// AI can calibrate contact tolerance. It cannot authorize or trigger a click.
+// AI can calibrate contact tolerance here. Clicks from Gemini go only through the
+// near-miss path in ui.js (ButtonAssist.judge), never through this contact test.
 export const DEFAULT_TOUCH_PROFILE = Object.freeze({ marginMm: 4, releaseMm: 30 });
 export function touchProfile(value, confidence) {
   if (!value || !Number.isFinite(confidence) || confidence < 0.8 || confidence > 1 ||

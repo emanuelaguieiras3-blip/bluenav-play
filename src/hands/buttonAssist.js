@@ -2,8 +2,10 @@
 // receives only the button text and returns a short explanation and whether the
 // action needs confirmation (leave, close, delete, open an external site).
 // Answers are cached per label, so each button costs one call at most.
-// The local contact test still detects the touch; Gemini only adds the hint and
-// the hold-to-confirm step for risky buttons.
+// The local contact test still detects the touch. When the fingertip stops just
+// in front of a button without touching it (phone-camera depth is noisy),
+// judge() lets Gemini decide from the finger's distance track whether the user
+// meant to press. Risky buttons never take that path: they need a real touch.
 import { CONFIG } from '../../config.js';
 
 export const BUTTON_PROMPT = `Você ajuda quem usa o BlueNav Play, um sistema de VR no navegador controlado pelo dedo indicador.
@@ -12,6 +14,19 @@ Responda APENAS com JSON válido: {"dica": "...", "confirmar": true|false}
 - "dica": em português do Brasil, no máximo 60 caracteres, dizendo o que o botão faz. Sem emoji.
 - "confirmar": true somente se o toque sair do jogo atual, fechar algo, apagar dados, encerrar a sessão VR ou abrir um site externo. Caso contrário false.
 Sem texto extra.`;
+
+export const INTENT_PROMPT = `Você decide se uma pessoa quer apertar um botão em VR.
+A mão é rastreada pela câmera do celular, que erra a profundidade em 1 a 3 cm.
+Recebe o texto do botão e amostras [distancia_mm, tempo_ms]: distância da ponta do indicador até a superfície do botão (positivo = à frente, ainda sem tocar).
+Quem quer apertar se aproxima e para perto (menos de ~25 mm) ou continua empurrando na direção do botão. Quem só passa, oscila longe ou se afasta não quer apertar.
+Responda APENAS com JSON válido: {"pressionar": true|false, "confianca": número de 0 a 1}. Sem texto extra.`;
+
+export function parseIntentReply(text) {
+  let out;
+  try { out = JSON.parse(String(text).replace(/^```json|```$/g, '').trim()); } catch { return null; }
+  if (!out || typeof out.pressionar !== 'boolean' || typeof out.confianca !== 'number' || !(out.confianca >= 0 && out.confianca <= 1)) return null;
+  return { pressionar: out.pressionar, confianca: out.confianca };
+}
 
 const STORE_KEY = 'bluenav.buttonHints.v1';
 const MAX_CACHE = 200;
@@ -49,31 +64,50 @@ export class ButtonAssist {
     return null;
   }
 
-  async _request(label, context) {
+  // Gemini's verdict on a fingertip that stopped just short of a button, or null.
+  async judge(label, samples) {
+    label = String(label || '').trim().slice(0, 80);
+    if (!label || !this.active || this.judging || performance.now() < this.nextAt) return null;
+    this.judging = true;
+    try {
+      const text = await this._call(INTENT_PROMPT, { botao: label, amostras: samples.slice(-16) }, 60);
+      const verdict = parseIntentReply(text);
+      this.status = verdict ? `toque ${verdict.pressionar ? 'confirmado' : 'recusado'} pelo Gemini` : 'resposta inválida';
+      return verdict;
+    } catch (error) { this.status = 'erro: ' + error.message; return null; }
+    finally { this.judging = false; }
+  }
+
+  async _call(prompt, payload, maxOutputTokens) {
     const gemini = this.gemini, model = CONFIG.GEMINI_MODELS[gemini.modelIdx];
     const { url, headers } = gemini._endpoint(model);
     const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 6000);
-    const body = {
-      systemInstruction: { parts: [{ text: BUTTON_PROMPT }] },
-      contents: [{ role: 'user', parts: [{ text: JSON.stringify({ botao: label, tela: context }) }] }],
-      generationConfig: { temperature: 0, responseMimeType: 'application/json', maxOutputTokens: 120 },
-    };
-    this.status = `consultando "${label}"`;
     try {
-      const response = await fetch(url, { method: 'POST', signal: controller.signal, headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) });
+      const response = await fetch(url, { method: 'POST', signal: controller.signal, headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({
+        systemInstruction: { parts: [{ text: prompt }] },
+        contents: [{ role: 'user', parts: [{ text: JSON.stringify(payload) }] }],
+        generationConfig: { temperature: 0, responseMimeType: 'application/json', maxOutputTokens },
+      }) });
       if (response.status === 429) { this.nextAt = performance.now() + 30000; throw new Error('limite de uso (429)'); }
       if (!response.ok) { this.nextAt = performance.now() + 10000; throw new Error('HTTP ' + response.status); }
       const json = await response.json();
-      const text = json?.candidates?.[0]?.content?.parts?.filter(p => !p.thought).map(p => p.text || '').join('') || '';
-      const answer = parseButtonReply(text);
+      return json?.candidates?.[0]?.content?.parts?.filter(p => !p.thought).map(p => p.text || '').join('') || '';
+    } finally { clearTimeout(timeout); }
+  }
+
+  async _request(label, context) {
+    this.status = `consultando "${label}"`;
+    try {
+      const answer = parseButtonReply(await this._call(BUTTON_PROMPT, { botao: label, tela: context }, 120));
       if (!answer) { this.nextAt = performance.now() + 5000; throw new Error('resposta inválida'); }
       this._remember(label, answer);
       this.status = `ok · ${this.cache.size} botões`;
       this.nextAt = performance.now() + 1200;
     } catch (error) {
-      this.status = controller.signal.aborted ? 'tempo esgotado' : 'erro: ' + error.message;
-      if (controller.signal.aborted) this.nextAt = performance.now() + 5000;
-    } finally { clearTimeout(timeout); }
+      const timedOut = error.name === 'AbortError';
+      this.status = timedOut ? 'tempo esgotado' : 'erro: ' + error.message;
+      if (timedOut) this.nextAt = performance.now() + 5000;
+    }
   }
 
   _remember(label, answer) {
