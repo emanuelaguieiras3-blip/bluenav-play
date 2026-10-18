@@ -1,5 +1,9 @@
 # BlueNav Play
 
+A entrada usa a interface escura compacta, com botões para headset WebXR e VR Box. O catálogo fica dentro do ambiente VR.
+
+Para calibrar mãos da câmera com Gemini, abra **Configurar Gemini**, informe uma chave do Google AI Studio e escolha **Ativar calibração**. A chave fica apenas na memória da página e desaparece ao recarregar; não é salva no navegador. Somente coordenadas das mãos são enviadas. A validade da chave e a quota são verificadas na primeira chamada com mãos detectadas. Também é possível configurar `GEMINI_PROXY_URL` para usar um servidor próprio. Sem chave ou servidor, o rastreamento e a correção local continuam disponíveis, mas não há calibração Gemini. Gemini não corrige as juntas nativas de um headset WebXR.
+
 Salas por código e exigências para hospedagem: [NETWORK.md](NETWORK.md). Universe Sandbox compartilha sua simulação na sala; os outros jogos têm níveis diferentes de integração e a maioria sincroniza apenas presença e posição.
 
 Objetivo atual: criar jogos próprios que reproduzam o melhor possível as mecânicas
@@ -259,6 +263,11 @@ No PowerShell com scripts bloqueados, use `npm.cmd install` e `npm.cmd test`. Os
 
 O Véspera está em [`vespera-rpg2/`](vespera-rpg2/) e pode ser aberto pela página inicial. Seu modo WebXR lê a partida original e projeta terreno, árvores, edifícios, criaturas, NPCs e jogadores numa cena espacial 3D. A simulação, as missões, a arte 2D e o salvamento continuam no motor original. Veja [`vespera-rpg2/VR_README.md`](vespera-rpg2/VR_README.md) para limites e controles.
 
-O **Universe Sandbox** começa com estrela, planeta e lua. Escolha um tipo e pince para criar outro corpo. Toque em **Inspecionar** e aponte para um astro com mão, controle XR ou mouse para abrir a edição 3D: massa, raio, velocidade, parada e órbita circular para planetas e luas. **Impacto** e **Maré** mostram eventos reproduzíveis. A física usa gravitação newtoniana com unidades reduzidas para uma cena VR. O impacto conserva massa e impulso, gera onda e detritos. A maré transfere matéria da estrela ao buraco negro e desenha filamentos ligados aos corpos. Isso é uma simulação estilizada e não calcula astrofísica em escala real nem reproduz todas as funções do Universe Sandbox comercial.
+O **Universe Sandbox** começa com estrela, planeta e lua. Escolha um tipo e pince para criar outro corpo. Toque em **Inspecionar** e aponte para um astro com mão, controle XR ou mouse para abrir a edição 3D: massa, raio, velocidade, parada e órbita circular para planetas e luas. O painel mostra a excentricidade e o período orbital estimados; a linha verde prevê a trajetória futura e pode ser desligada. Planetas recebem iluminação da estrela e uma camada independente de nuvens em dispositivos com desempenho suficiente. **Impacto** e **Maré** mostram eventos reproduzíveis. A física usa gravitação newtoniana com unidades reduzidas e integração Velocity Verlet, que reduz o desvio de energia de órbitas livres. O impacto conserva massa e impulso, gera onda e detritos. A maré transfere matéria da estrela ao buraco negro e desenha filamentos ligados aos corpos. Isso é uma simulação estilizada e não calcula astrofísica em escala real nem reproduz todas as funções do Universe Sandbox comercial.
 
 O Universe Sandbox sincroniza o estado físico pela sala online com simulação no anfitrião. A hospedagem de um servidor WebSocket persistente continua necessária para jogar pela internet; `render.yaml` e [`NETWORK.md`](NETWORK.md) preparam esse deploy. Os demais jogos ainda precisam de regras multiplayer específicas.
+
+
+## Tênis de Mesa e Play Club
+
+O catálogo inclui Tênis de Mesa VR, com hand tracking, controles XR, adversário virtual, saques e placar até 11 com dois pontos de vantagem. A entrada e o menu usam verde de clube, marfim e terracota. Os avatares compartilhados da Praça e do novo jogo possuem braços articulados, pernas, pés e detalhes faciais. Veja [controles, física e limites](PINGPONG.md).

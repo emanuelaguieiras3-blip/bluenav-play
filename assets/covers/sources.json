@@ -1,0 +1,31 @@
+{
+  "source": "Captures of the local BlueNav games, rendered in Chromium. No external game artwork.",
+  "games": [
+    "pingpong",
+    "plaza",
+    "complex",
+    "sandbox",
+    "jobs",
+    "tactical",
+    "racing",
+    "ski",
+    "motorbike",
+    "shiftworld",
+    "jungle",
+    "arena",
+    "archery",
+    "rhythm",
+    "kingdom",
+    "dungeon",
+    "galaxy",
+    "universe",
+    "puzzle",
+    "dive",
+    "climb",
+    "night",
+    "cook",
+    "tablegames",
+    "physics",
+    "blocks"
+  ]
+}

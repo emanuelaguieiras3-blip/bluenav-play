@@ -8,40 +8,13 @@ import { T } from './theme.js';
 import { DEG } from '../core/util.js';
 import { fitText } from '../core/textures.js';
 import { OFFICIAL_GAMES } from '../media/officialGames.js';
+import { APP_ART, CATEGORIES, gameCover, loadCatalogImage, drawCover } from './catalogArt.js';
+import { createSpaceDecor, paintSpacePanel } from './spaceDecor.js';
 
 const R = 0.64;              // biblioteca ao alcance do dedo
 const PANEL_WIDTH = 0.82;
 const COLS = 3;
 const PAGE_SIZE = 9;
-
-// Arte de cada bloco: a própria textura do jogo (ou um desenho simples)
-const ART = {
-  sandbox: 'metalPanel', jobs: 'woodLight', tactical: 'brushedMetal',
-  racing: 'road', ski: 'snow', motorbike: 'asphalt', jungle: 'barkMoss', arena: 'stoneTiles', archery: 'target', kingdom: 'blockGrassTop',
-  dungeon: 'dungeonWall', galaxy: 'earth', climb: 'rockStrata', cook: 'marble', tablegames: 'cardBack', blocks: 'mcGrassSide',
-};
-function drawArt(app, id, x, X, Y, W, H) {
-  const name = ART[id];
-  if (name) {
-    const src = app.tex.drawCanvas(name, 128);
-    x.imageSmoothingEnabled = name.startsWith('mc') ? false : true;
-    const s = Math.max(W, H);
-    x.drawImage(src, X + (W - s) / 2, Y + (H - s) / 2, s, s);
-    x.imageSmoothingEnabled = true;
-  } else {
-    const g = x.createLinearGradient(X, Y, X, Y + H);
-    const pal = { rhythm: ['#0e1016', '#1a1d26'], puzzle: ['#e9ecf1', '#c9ced6'], dive: ['#3fc2d8', '#0b4a6e'], night: ['#0b0f1a', '#020305'], physics: ['#ffffff', '#dfe3e8'], shiftworld: ['#b765bc', '#32234e'] }[id] || ['#333', '#111'];
-    g.addColorStop(0, pal[0]); g.addColorStop(1, pal[1]); x.fillStyle = g; x.fillRect(X, Y, W, H);
-    if (id === 'rhythm') ['#4aa3ff', '#ff5fa8', '#ffcf4a'].forEach((c, i) => { x.fillStyle = c; x.shadowColor = c; x.shadowBlur = 18; x.beginPath(); x.roundRect(X + W * (0.22 + i * 0.22), Y + H * (0.35 + (i % 2) * 0.12), W * 0.13, W * 0.13, 6); x.fill(); });
-    if (id === 'puzzle') { x.fillStyle = '#f7f9fc'; x.strokeStyle = '#8a93a3'; x.lineWidth = 2; for (const [a, b] of [[0.38, 0.3], [0.52, 0.3], [0.38, 0.5]]) { x.beginPath(); x.roundRect(X + W * a, Y + H * b, W * 0.14, W * 0.14, 5); x.fill(); x.stroke(); } }
-    if (id === 'dive') { x.fillStyle = 'rgba(255,255,255,0.7)'; for (let i = 0; i < 9; i++) { x.beginPath(); x.arc(X + W * (0.2 + (i * 0.37) % 0.7), Y + H * (0.25 + (i * 0.23) % 0.6), 3 + (i % 3) * 2, 0, 6.29); x.fill(); } }
-    if (id === 'night') { x.fillStyle = '#dfe6ff'; x.beginPath(); x.arc(X + W * 0.7, Y + H * 0.3, H * 0.12, -1, 1.2); x.lineWidth = 6; x.strokeStyle = '#dfe6ff'; x.stroke(); x.fillStyle = 'rgba(255,240,190,0.35)'; x.beginPath(); x.moveTo(X + W * 0.2, Y + H); x.lineTo(X + W * 0.45, Y + H * 0.45); x.lineTo(X + W * 0.6, Y + H); x.fill(); }
-    if (id === 'physics') { x.fillStyle = '#1b1c1f'; x.beginPath(); x.arc(X + W * 0.5, Y + H * 0.42, H * 0.16, 0, 6.29); x.fill(); x.fillStyle = 'rgba(0,0,0,0.12)'; x.beginPath(); x.ellipse(X + W * 0.5, Y + H * 0.82, H * 0.18, H * 0.05, 0, 0, 6.29); x.fill(); }
-  }
-  // leve escurecimento embaixo para dar profundidade
-  const v = x.createLinearGradient(X, Y + H * 0.5, X, Y + H); v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,0.35)');
-  x.fillStyle = v; x.fillRect(X, Y, W, H);
-}
 
 export class ArcMenu {
   constructor(app) {
@@ -57,9 +30,10 @@ export class ArcMenu {
     const H = 0.76;
     const pc = document.createElement('canvas'); pc.width = 1200; pc.height = Math.round(1200 * H / PANEL_WIDTH);
     const px = pc.getContext('2d');
-    px.fillStyle = T.panel; px.beginPath(); px.roundRect(0, 0, pc.width, pc.height, 46); px.fill();
-    px.fillStyle = T.text; px.font = `600 42px ${T.font}`; px.textBaseline = 'middle'; px.fillText('Biblioteca', 52, 68);
-    px.fillStyle = T.textDim; px.font = `500 26px ${T.font}`; px.textAlign = 'right'; px.fillText('BlueNav Play', pc.width - 54, 68);
+    paintSpacePanel(px, pc.width, pc.height, 46);
+    px.fillStyle = T.text; px.font = `600 34px ${T.font}`; px.textBaseline = 'middle'; px.fillText('BlueNav / Biblioteca', 98, 42);
+    loadCatalogImage('assets/bluenav-mark.svg').then(image => { if (image) { px.drawImage(image, 34, 20, 44, 44); ptex.needsUpdate = true; } });
+    px.fillStyle = T.textDim; px.font = `500 26px ${T.font}`; px.textAlign = 'right';
     px.strokeStyle = T.line; px.lineWidth = 2; px.beginPath(); px.moveTo(52, 108); px.lineTo(pc.width - 52, 108); px.stroke();
     const ptex = new THREE.CanvasTexture(pc); ptex.colorSpace = THREE.SRGBColorSpace; ptex.anisotropy = 4;
     const panel = new THREE.Mesh(new THREE.PlaneGeometry(PANEL_WIDTH, H), new THREE.MeshBasicMaterial({ map: ptex, transparent: true, depthWrite: false }));
@@ -94,10 +68,16 @@ export class ArcMenu {
     this.pageLabel.position.set(0, -0.30, -R + 0.025);
     own.add(previous, next, this.pageLabel);
     this.showPage(0);
+    const vespera = makeButton(app, { w: 0.30, h: 0.045, label: 'V\u00e9spera RPG2 VR', icon: 'play', fontSize: 0.30,
+      onClick: async () => {
+        await app.renderer.xr.getSession()?.end();
+        window.location.assign(new URL('vespera-rpg2/?mode=vr', document.baseURI).href);
+      } });
+    vespera.position.set(0.22, 0.335, -R); lib.add(vespera);
+    this.vesperaButton = vespera;
     const official = new THREE.Group(); this.official = official; lib.add(official);
     OFFICIAL_GAMES.forEach((game, i) => {
-      const card = makeButton(app, { w: 0.70, h: 0.115, label: game.name, sub: game.platform, icon: 'play', fontSize: 0.30,
-        onClick: () => app.openExternalApps(game.id) });
+      const card = this._appTile(game);
       card.position.set(0, 0.13 - i * 0.14, -R); official.add(card);
     });
     const externalHint = makeLabel('Abre o site oficial. Instale no dispositivo compatível.', { w: 0.70, h: 0.045, size: 0.30, bg: 'rgba(0,0,0,0)', fg: T.textDim });
@@ -117,6 +97,7 @@ export class ArcMenu {
       { label: 'Teclado', icon: 'keyboard', fn: () => app.keyboard.show('', null) },
       { label: 'Segurança', icon: 'eye', fn: () => app.openSecurity() },
       { label: 'Objetos físicos', icon: 'block', fn: () => app.togglePhysics() },
+      { label: 'Rastrear mãos', icon: 'hand', fn: () => app.toggleHands() },
     ];
     options.forEach((it, i) => {
       const b = makeButton(app, { w: 0.28, h: 0.09, label: it.label, icon: it.icon, onClick: it.fn, fontSize: 0.28 });
@@ -125,10 +106,12 @@ export class ArcMenu {
     });
     this.aiStatus = makeLabel('', { w: 0.60, h: 0.045, bg: 'rgba(0,0,0,0)', size: 0.34, fg: T.textDim });
     this.aiStatus.position.set(0, -0.30, 0.003); quick.add(this.aiStatus);
+    this.handStatus = makeLabel('', { w: 0.60, h: 0.045, bg: 'rgba(0,0,0,0)', size: 0.32, fg: T.textDim });
+    this.handStatus.position.set(0, -0.25, 0.003); quick.add(this.handStatus);
 
     // ---- barra universal ----
     const bar = new THREE.Group(); this.bar = bar; this.group.add(bar);
-    const pill = makeLabel('', { w: 0.78, h: 0.09, bg: 'rgba(24,25,28,0.96)' });
+    const pill = makeLabel('', { w: 0.78, h: 0.09, bg: T.panel });
     bar.add(pill);
     this.clock = makeLabel('', { w: 0.1, h: 0.05, bg: 'rgba(0,0,0,0)', size: 0.5 });
     this.clock.position.set(-0.315, 0, 0.002); bar.add(this.clock);
@@ -147,7 +130,7 @@ export class ArcMenu {
     items.forEach((it, i) => {
       const b = makeButton(app, {
         w: 0.072, h: 0.072, icon: it.icon, variant: 'ghost', round: true, onClick: it.fn,
-        onHover: (on) => { this.tip.visible = on; if (on) { this.tip.userData.set(it.tip); this.tip.position.set(b.position.x, 0.075, 0.004); } },
+        hint: it.tip, onHover: (on) => { this.tip.visible = on; if (on) { this.tip.userData.set(it.tip); this.tip.position.set(b.position.x, 0.075, 0.004); } },
       });
       b.position.set(-0.21 + i * 0.085, 0, 0.004);
       bar.add(b);
@@ -163,52 +146,69 @@ export class ArcMenu {
       o.material.depthTest = false; o.material.depthWrite = false; o.material.toneMapped = false;
     });
     for (const label of [this.clock, this.tip, title, this.aiStatus, this.pageLabel]) label.renderOrder = 320;
+    // Added after the overlay pass: the decor keeps its own lower render order.
+    this.decor = createSpaceDecor({ lowEnd: !!(app.perf?.lowEnd || app.perf?.mobile) });
+    this.group.add(this.decor.root);
     this._clockT = 0;
   }
 
   _tile(g, w, h) {
-    const app = this.app;
-    const CW = 300, CH = Math.round(CW * h / w), IH = Math.round(CH * 0.74);
+    const app = this.app, CW = 360, CH = Math.round(CW * h / w), IH = Math.round(CH * .65);
     const cv = document.createElement('canvas'); cv.width = CW; cv.height = CH;
-    const x = cv.getContext('2d');
-    const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 1; tex.generateMipmaps = false; tex.minFilter = THREE.LinearFilter;
-    let hover = false;
-    const art = document.createElement('canvas'); art.width = CW; art.height = IH;
-    drawArt(app, g.id, art.getContext('2d'), 0, 0, CW, IH);
-    const badge = art.getContext('2d');
-    badge.fillStyle = g.color;
-    badge.beginPath(); badge.arc(34, 34, 23, 0, Math.PI * 2); badge.fill();
-    badge.strokeStyle = '#f4f8ff'; badge.lineWidth = 3;
-    badge.beginPath(); badge.moveTo(34, 16); badge.lineTo(39, 29); badge.lineTo(52, 34); badge.lineTo(39, 39); badge.lineTo(34, 52); badge.lineTo(29, 39); badge.lineTo(16, 34); badge.lineTo(29, 29); badge.closePath(); badge.stroke();
-    badge.fillStyle = '#fff'; badge.font = 'bold 14px sans-serif'; badge.textAlign = 'center'; badge.textBaseline = 'middle';
-    badge.fillText(g.name[0].toUpperCase(), 34, 34);
+    const x = cv.getContext('2d'), tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace; tex.generateMipmaps = false; tex.minFilter = THREE.LinearFilter;
+    let hover = false, image = null;
     const draw = () => {
-      x.clearRect(0, 0, CW, CH);
-      x.save(); x.beginPath(); x.roundRect(4, 4, CW - 8, IH - 8, 22); x.clip(); x.drawImage(art, 0, 0); x.restore();
-      if (hover) { x.strokeStyle = '#ffffff'; x.lineWidth = 6; x.beginPath(); x.roundRect(4, 4, CW - 8, IH - 8, 22); x.stroke(); }
-      x.fillStyle = hover ? T.text : T.textDim; x.font = `600 30px ${T.font}`; x.textAlign = 'left'; x.textBaseline = 'middle';
-      fitText(x, g.name, 10, IH + (CH - IH) / 2, CW - 20);
+      x.clearRect(0, 0, CW, CH); x.save(); x.beginPath(); x.roundRect(2, 2, CW - 4, CH - 4, 18); x.clip();
+      x.fillStyle = hover ? T.surfaceHover : T.surface; x.fillRect(0, 0, CW, CH);
+      if (image) drawCover(x, image, 0, 0, CW, IH);
+      else { x.fillStyle = g.color; x.fillRect(0, 0, CW, IH); }
+      x.fillStyle = T.text; x.font = `600 24px ${T.font}`; x.textAlign = 'left'; x.textBaseline = 'middle';
+      const words = g.name.split(' '), lines = []; let line = '';
+      for (const word of words) { const next = line ? line + ' ' + word : word; if (line && x.measureText(next).width > CW - 30) { lines.push(line); line = word; } else line = next; }
+      lines.push(line);
+      lines.slice(0, 2).forEach((text, i) => fitText(x, text, 14, IH + 20 + i * 24, CW - 28));
+      if (lines.length === 1) { x.font = `500 15px ${T.font}`; x.fillStyle = T.textDim; x.fillText(CATEGORIES[g.id] || 'BlueNav', 14, IH + 46); }
+      x.restore();
+      if (hover) { x.strokeStyle = T.accent; x.lineWidth = 3; x.beginPath(); x.roundRect(2, 2, CW - 4, CH - 4, 18); x.stroke(); }
       tex.needsUpdate = true;
     };
-    draw();
+    draw(); loadCatalogImage(gameCover(g.id)).then(next => { image = next; draw(); });
     const inner = new THREE.Group();
-    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.02 }));
-    inner.add(mesh);
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: .02 })); inner.add(mesh);
     const outer = new THREE.Group(); outer.add(inner);
-    app.ui.add(mesh, {
-      owner: 'ui', press: inner,
-      onClick: () => app.loadGame(g.id),
-      onHover: (on) => { hover = on; inner.scale.setScalar(on ? 1.035 : 1); draw(); },
-    });
+    outer.userData.cover = gameCover(g.id);
+    app.ui.add(mesh, { owner: 'ui', press: inner, label: g.name, onClick: () => app.loadGame(g.id),
+      onHover: on => { hover = on; inner.scale.setScalar(on ? 1.025 : 1); draw(); } });
     return outer;
+  }
+
+  _appTile(game) {
+    const canvas = document.createElement('canvas'); canvas.width = 1000; canvas.height = 166;
+    const context = canvas.getContext('2d'), texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    let image = null, hover = false;
+    const draw = () => {
+      context.clearRect(0, 0, 1000, 166); context.save(); context.beginPath(); context.roundRect(2, 2, 996, 162, 18); context.clip();
+      context.fillStyle = hover ? T.surfaceHover : T.surface; context.fillRect(0, 0, 1000, 166);
+      if (image) drawCover(context, image, 0, 0, 300, 166);
+      context.textBaseline = 'middle'; context.textAlign = 'left'; context.fillStyle = T.text; context.font = `600 36px ${T.font}`;
+      context.fillText(game.name, 333, 59); context.fillStyle = T.textDim; context.font = `500 22px ${T.font}`;
+      fitText(context, game.platform, 333, 110, 620); context.restore(); texture.needsUpdate = true;
+    };
+    draw(); loadCatalogImage(APP_ART[game.id]).then(next => { image = next; draw(); });
+    const card = new THREE.Group(), mesh = new THREE.Mesh(new THREE.PlaneGeometry(.70, .115), new THREE.MeshBasicMaterial({ map: texture, transparent: true })); card.add(mesh);
+    this.app.ui.add(mesh, { owner: 'ui', press: card, label: game.name, onClick: () => this.app.openExternalApps(game.id), onHover: on => { hover = on; draw(); } });
+    return card;
   }
 
   toggle(open = !this.open) {
     this.open = open;
     if (open) {
       const c = this.app.camera.position, yaw = this.app.headYaw();
-      this.group.position.set(c.x, c.y - 0.1, c.z);
-      this.group.rotation.set(0, yaw, 0);
+      this.group.position.set(c.x, c.y - 0.06, c.z);
+      const pitch = new THREE.Euler().setFromQuaternion(this.app.camera.quaternion, 'YXZ').x;
+      this.group.rotation.set(pitch, yaw, 0, 'YXZ');
       this.showPanel('library');
       this.group.visible = true;
       this._tick();
@@ -258,11 +258,14 @@ export class ArcMenu {
     // abre crescendo e subindo de leve, como no Quest
     this.group.scale.setScalar(0.94 + 0.06 * this.anim);
     this.lib.position.y = 0.08 - (1 - this.anim) * 0.04;
+    this.decor.update(dt);
     if (this.quick.visible) {
       this.cameraButton.userData.setActive(this.app.passthrough.available && !!this.app.passthrough.on);
       if (!this._cameraBusy) this.cameraButton.userData.setLabel(this.app.passthrough.available ? 'Mundo real' : this._cameraError ? 'Câmera bloqueada' : 'Ativar câmera');
       const ai = this.app.hands?.gemini;
-      const status = !ai?.enabled ? 'IA: desligada · toque ativo' : ai.status.startsWith('ok') ? 'IA: calibração ativa' : ai.status.startsWith('erro') || ai.status.includes('esgotado') || ai.status === 'sem chave' ? 'IA: indisponível · toque ativo' : 'IA: aguardando · toque ativo';
+      const tracking = this.app.hands;
+      this.handStatus.userData.set(tracking ? `Mãos: ${tracking.status || 'ativas'}` : this.app._handsBusy ? 'Mãos: carregando modelo' : this.app.handError ? `Câmera: ${this.app.handError}` : 'Mãos: desativadas');
+      const status = !ai?.enabled ? 'IA: desligada · toque ativo' : ai.status.startsWith('ok') || ai.buttons?.status.startsWith('ok') ? 'IA: calibração e botões ativos' : ai.status.includes('API Vertex desativada') ? 'IA: habilite API Vertex' : ai.status.startsWith('erro') || ai.status.includes('esgotado') || ai.status === 'sem chave' ? 'IA: indisponível · toque ativo' : 'IA: aguardando · toque ativo';
       this.aiStatus.userData.set(status);
     }
     if ((this._clockT += dt) > 5) { this._clockT = 0; this._tick(); }

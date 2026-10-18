@@ -1,6 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BODY_TYPES, circularVelocity, makeBody, stepUniverse, tidalRadius } from '../src/games/universePhysics.js';
+import { BODY_TYPES, circularVelocity, makeBody, orbitalElements, predictTrajectory, stepUniverse, tidalRadius, universeEnergy } from '../src/games/universePhysics.js';
+
+test('Universe Sandbox: integrador preserva energia orbital e previsão não altera a partida', () => {
+  const sun = makeBody('star', 'sun', { x: 0, y: 0, z: 0 });
+  const planet = makeBody('planet', 'earth', { x: 5, y: 0, z: 0 }, circularVelocity(sun, { x: 5, y: 0, z: 0 }));
+  const state = { bodies: [sun, planet], time: 0 };
+  const before = structuredClone(state), initialEnergy = universeEnergy(state.bodies);
+  const forecast = predictTrajectory(state, 'earth', 40, 0.1);
+  assert.equal(forecast.length, 40);
+  assert.deepEqual(state, before, 'previsão não muda a simulação em andamento');
+  const orbit = orbitalElements(sun, planet);
+  assert.ok(orbit.eccentricity < 0.05 && orbit.period > 19 && orbit.period < 22, JSON.stringify(orbit));
+  for (let i = 0; i < 2000; i++) stepUniverse(state, 0.05);
+  const drift = Math.abs((universeEnergy(state.bodies) - initialEnergy) / initialEnergy);
+  assert.ok(drift < 0.001, `desvio de energia ${drift}`);
+});
 
 test('Universe Sandbox: planeta mantém uma órbita aproximadamente circular', () => {
   const sun = makeBody('star', 'sun', { x: 0, y: 0, z: 0 });

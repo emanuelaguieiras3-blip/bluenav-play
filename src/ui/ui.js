@@ -7,6 +7,8 @@ import * as THREE from 'three';
 import { CONFIG } from '../../config.js';
 import { FingerContact } from '../hands/fingerContact.js';
 
+const CONFIRM_HOLD = 0.45; // s com o dedo no botão quando o Gemini pede confirmação
+
 const SWIPE_ANGLE = 0.11; // ~6° de movimento antes de virar arrasto
 
 export class UI {
@@ -106,8 +108,9 @@ export class UI {
       if (s.seen) continue;
       if (s.drag) { s.drag.end?.(s.lastP); s.drag = null; s.dragMesh = null; }
       this._clearHover(s); s.press = null;
-      s.cursor.visible = false; s.line.visible = false;
+      s.cursor.visible = false; s.line.visible = false; s.confirm = null; if (s.hint) s.hint.visible = false;
       if (!input._ptrs?.has(id)) {
+        if (s.hint) { s.hint.material.map.dispose(); s.hint.material.dispose(); s.hint.geometry.dispose(); s.hint.removeFromParent(); }
         s.cursor.traverse((o) => { o.geometry?.dispose(); o.material?.dispose(); });
         s.line.geometry.dispose(); s.line.material.dispose();
         s.cursor.removeFromParent(); s.line.removeFromParent(); this.states.delete(id);
@@ -130,7 +133,7 @@ export class UI {
     s.lastP = p;
     if (p.stale && !p.system) {
       // Tracking dropout is not a release. Keep the grab, suppress new actions.
-      s.press = null; s.prevTip = null; s.contact.suspend();
+      s.press = null; s.prevTip = null; s.contact.suspend(); s.confirm = null; this._showHint(s, null);
       this._clearHover(s); s.cursor.visible = false; s.line.visible = false;
       return;
     }
@@ -139,7 +142,7 @@ export class UI {
       s.drag = null; s.dragMesh = null; s.press = null;
       this._clearHover(s); s.tap = null; s.tapArmed = undefined;
       s.cursor.visible = false; s.line.visible = false;
-      s.prevTip = null; s.contact.reset();
+      s.prevTip = null; s.contact.reset(); s.confirm = null; this._showHint(s, null);
       return;
     }
     // arrasto em andamento (mover janela, pegar objeto) — cada mão o seu
@@ -182,6 +185,7 @@ export class UI {
         const contactSub = this._subFor(ph);
         const previousDepth = previousTip ? -previousTip.sub(ph.point).dot(normal) : null;
         pokeClick = s.contact.update(contactSub ? ph.object.uuid + '|' + contactSub.key : null, depth, previousDepth);
+        s.pokeDepth = depth;
         if (pokeClick) s.pokePoint = ph.point.clone();
       } else if (!s.pokePoint || p.pokeTip.distanceTo(s.pokePoint) > 0.045) s.contact.reset();
     } else s.prevTip = null;
@@ -201,7 +205,19 @@ export class UI {
         if (sub.onClick) app.audio.hover();
       }
     } else if (sub) s.hoverSub = sub;
-    if (pokeClick && sub?.onClick && !s.drag) { s.press = null; this._fire(s, sub, hit.object); }
+    const advice = poking && sub?.onClick ? this._advice(sub, hit.object) : null;
+    if (pokeClick && sub?.onClick && !s.drag) {
+      s.press = null;
+      // Gemini marked this button as risky: keep the finger on it to confirm.
+      if (advice?.confirmar) s.confirm = { key, t: 0 };
+      else this._fire(s, sub, hit.object);
+    }
+    if (s.confirm) {
+      const touching = poking && key === s.confirm.key && s.pokeDepth >= -0.012;
+      if (!touching) s.confirm = null;
+      else if ((s.confirm.t += dt) >= CONFIRM_HOLD) { s.confirm = null; this._fire(s, sub, hit.object); }
+    }
+    this._showHint(s, poking && advice ? (s.confirm ? 'Segure para confirmar · ' + advice.dica : advice.dica) : null, hit?.point);
 
     const gaze = p.source === 'gaze';
     if (!poking && !s.drag) {
@@ -234,7 +250,8 @@ export class UI {
 
     // ---- cursor ----
     const strength = p.pinchStrength || 0;
-    const progress = gaze && sub && sub.onClick && !s.fired ? Math.min(1, s.dwellT / (sub.dwell ?? CONFIG.DWELL_TIME)) : 0;
+    const progress = s.confirm ? Math.min(1, s.confirm.t / CONFIRM_HOLD)
+      : gaze && sub && sub.onClick && !s.fired ? Math.min(1, s.dwellT / (sub.dwell ?? CONFIG.DWELL_TIME)) : 0;
     let n = null;
     const gameHit = p.main ? app.pointerHit : null;
     if (hit) {
@@ -272,6 +289,39 @@ export class UI {
     col.setW(1, sub ? 0.25 + 0.4 * near : 0.02);
     col.needsUpdate = true;
     s.line.visible = !gaze && !poking && !p.system && !p.hideRay;
+  }
+
+  // Gemini hint for the button under the fingertip (null when Gemini is off).
+  _advice(sub, mesh) {
+    const assist = this.app.hands?.gemini?.buttons;
+    if (!assist?.active) return null;
+    const raw = sub.label ?? mesh.userData.ui.label;
+    const label = typeof raw === 'function' ? raw() : raw;
+    return assist.lookup(label, this.app.menu?.open ? 'menu do sistema' : 'jogo ' + (this.app.gameId || ''));
+  }
+
+  _showHint(s, text, point) {
+    if (!text || !point) { if (s.hint) s.hint.visible = false; return; }
+    if (!s.hint) {
+      const canvas = document.createElement('canvas'); canvas.width = 960; canvas.height = 128;
+      const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
+      s.hint = new THREE.Mesh(new THREE.PlaneGeometry(0.30, 0.04), new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthTest: false, depthWrite: false }));
+      s.hint.renderOrder = 1000; this.app.scene.add(s.hint);
+    }
+    if (s.hint.userData.text !== text) {
+      s.hint.userData.text = text;
+      const texture = s.hint.material.map, canvas = texture.image, x = canvas.getContext('2d');
+      x.clearRect(0, 0, canvas.width, canvas.height);
+      x.fillStyle = 'rgba(16,20,40,0.92)'; x.beginPath(); x.roundRect(2, 2, canvas.width - 4, canvas.height - 4, 60); x.fill();
+      x.strokeStyle = 'rgba(127,200,255,0.6)'; x.lineWidth = 3; x.stroke();
+      x.fillStyle = '#e8eeff'; x.font = '600 44px system-ui, "Segoe UI", sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+      x.fillText(text, canvas.width / 2, canvas.height / 2, canvas.width - 70);
+      texture.needsUpdate = true;
+    }
+    const camera = this.app.camera, up = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.getWorldQuaternion(new THREE.Quaternion()));
+    s.hint.position.copy(point).addScaledVector(up, 0.06);
+    s.hint.quaternion.copy(camera.getWorldQuaternion(new THREE.Quaternion()));
+    s.hint.visible = true;
   }
 
   // encerra um arrasto pelo lado do jogo (ex.: peça que encaixou sozinha)

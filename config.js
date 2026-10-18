@@ -10,7 +10,7 @@ export const CONFIG = {
 
   GEMINI_API_KEY: '',
   // Modelos tentados em ordem (o primeiro que responder é mantido).
-  GEMINI_MODELS: ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-flash-latest'],
+  GEMINI_MODELS: ['gemini-3.5-flash-lite', 'gemini-flash-lite-latest', 'gemini-flash-latest'],
   // Se preenchido, as chamadas vão para este endereço (POST com o mesmo corpo da API).
   GEMINI_PROXY_URL: '',
   // O Gemini não aguenta 30 chamadas/s. Ele recebe uma janela de ~0,5s de frames

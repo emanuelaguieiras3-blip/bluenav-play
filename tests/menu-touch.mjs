@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { GAMES } from '../src/games/index.js';
+import { OFFICIAL_GAMES } from '../src/media/officialGames.js';
 
 const browser = await chromium.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true,
   args: ['--enable-unsafe-swiftshader', '--use-angle=swiftshader'] });
@@ -84,7 +85,9 @@ try {
     app.menu.showPanel('library'); app.scene.updateMatrixWorld(true); app.stereo.render(app.scene, app.camera);
     window.__menuContactReport = { checks, actualPanelOpened, pagingWorks }; return window.__menuContactReport;
   });
-  assert.equal(report.checks.length, GAMES.length + 4 * 3 + 7 * 3 + 5 + 7 + 2 + 3 + 7);
+  const pages = Math.ceil(GAMES.length / 9);
+  // Each library page includes tabs, navigation, dock and the Véspera shortcut.
+  assert.equal(report.checks.length, GAMES.length + pages * 12 + 12 + OFFICIAL_GAMES.length + 11);
   for (const check of report.checks) {
     assert.equal(check.held, 1, JSON.stringify(check)); assert.equal(check.afterRetouch, 2, JSON.stringify(check));
     assert.ok(check.distance < 0.9, JSON.stringify(check));

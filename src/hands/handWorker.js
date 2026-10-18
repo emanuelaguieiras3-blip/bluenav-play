@@ -4,6 +4,7 @@
 var exports = {};
 var module = { exports: exports };
 let landmarker = null;
+let frameCanvas = null;
 
 self.onmessage = async (e) => {
   const m = e.data;
@@ -33,7 +34,16 @@ self.onmessage = async (e) => {
   } else if (m.type === 'frame') {
     const t0 = performance.now();
     let res = null;
-    try { res = landmarker.detectForVideo(m.bitmap, m.t); } catch { /* quadro perdido */ }
+    try {
+      let source = m.bitmap;
+      if (typeof OffscreenCanvas !== 'undefined' && m.bitmap.width > 480) {
+        const width = 480, height = Math.round(m.bitmap.height * width / m.bitmap.width);
+        if (!frameCanvas || frameCanvas.width !== width || frameCanvas.height !== height) frameCanvas = new OffscreenCanvas(width, height);
+        frameCanvas.getContext('2d').drawImage(m.bitmap, 0, 0, width, height);
+        source = frameCanvas;
+      }
+      res = landmarker.detectForVideo(source, m.t);
+    } catch { /* tentativa de recuperação após três quadros */ }
     self.postMessage({
       type: 'result', bitmap: m.bitmap, t: m.t, ms: performance.now() - t0,
       res: res && { landmarks: res.landmarks, worldLandmarks: res.worldLandmarks, handednesses: res.handednesses || res.handedness },

@@ -1,10 +1,12 @@
 // Spatial WebXR view of the live Véspera simulation. The 2D engine remains
 // authoritative for movement, collision, combat, quests, saves and networking.
 import * as THREE from './vendor/three.module.js';
+import { createActor, disposeActor } from './vr-actors.js';
 
 const RADIUS = 12;
 const SIDE = RADIUS * 2 + 1;
-const MONSTER_ART = new Set(['slime', 'wraith', 'gargoyle', 'dragonkin', 'demon', 'sylph', 'soulWarden']);
+// RPG directions: south, west, east, north. Models look along local -Z.
+export function actorYaw(direction) { return [0, Math.PI / 2, -Math.PI / 2, Math.PI][direction] ?? 0; }
 
 function noise(x, y, seed = 0) {
   const n = Math.sin(x * 127.1 + y * 311.7 + seed * 0.013) * 43758.5453;
@@ -59,39 +61,6 @@ function setInstances(mesh, positions, scale = [1, 1, 1]) {
   mesh.instanceMatrix.needsUpdate = true; mesh.computeBoundingSphere();
 }
 
-function actor(color, withArt = false) {
-  const group = new THREE.Group();
-  const coat = new THREE.MeshStandardMaterial({ color, roughness: 0.86, metalness: 0.04 });
-  const dark = new THREE.MeshStandardMaterial({ color: '#24202b', roughness: 0.75 });
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.25, 0.55, 6, 12), coat);
-  body.position.y = 0.78; group.add(body);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 8), coat);
-  head.position.y = 1.4; group.add(head);
-  for (const side of [-1, 1]) {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), dark);
-    eye.position.set(side * 0.09, 1.44, -0.19); group.add(eye);
-    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.065, 0.35, 4, 8), coat);
-    arm.position.set(side * 0.33, 0.9, 0); arm.rotation.z = side * 0.35; group.add(arm);
-  }
-  if (withArt) {
-    const plane = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 1.55), new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, depthWrite: false }));
-    plane.position.set(0, 0.88, -0.29); plane.visible = false; group.add(plane); group.userData.art = plane;
-  }
-  group.userData.body = body;
-  return group;
-}
-
-function avatarTexture(player) {
-  const art = window.WorldArt?.sprite?.(player.classId, player.dir || 0, 0, player.appearance || 'female', player.look);
-  if (!art) return null;
-  const canvas = document.createElement('canvas'); canvas.width = 128; canvas.height = 192;
-  const context = canvas.getContext('2d'); context.imageSmoothingEnabled = false;
-  const scale = Math.min(112 / art.width, 184 / art.height);
-  context.drawImage(art, (128 - art.width * scale) / 2, 192 - art.height * scale, art.width * scale, art.height * scale);
-  const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
-  return texture;
-}
-
 export function createSpatialWorld(scene, getSession) {
   const root = new THREE.Group(); root.name = 'vespera-spatial-world'; scene.add(root);
   const groundGeometry = new THREE.PlaneGeometry(SIDE, SIDE, SIDE, SIDE).rotateX(-Math.PI / 2);
@@ -113,7 +82,6 @@ export function createSpatialWorld(scene, getSession) {
   const buildingMesh = instanced(new THREE.CylinderGeometry(0.53, 0.61, 1.7, 10), masonry, SIDE * SIDE, root);
   const roofMesh = instanced(new THREE.ConeGeometry(0.74, 0.72, 10), roof, SIDE * SIDE, root);
   const actors = new Map(), interactables = [];
-  const monsterTextures = new Map(), loader = new THREE.TextureLoader();
   let centerX = Infinity, centerY = Infinity, worldSeed = null, elapsed = 0, refresh = 0, harvestCount = -1;
 
   function rebuild(world, x0, y0) {
@@ -152,38 +120,31 @@ export function createSpatialWorld(scene, getSession) {
     setInstances(waterMesh, waters); setInstances(buildingMesh, buildings); setInstances(roofMesh, roofs);
   }
 
-  function setMonsterArt(group, kind) {
-    if (!MONSTER_ART.has(kind)) return;
-    let texture = monsterTextures.get(kind);
-    if (!texture) {
-      texture = loader.load(`assets/mon-${kind}.png`); texture.colorSpace = THREE.SRGBColorSpace;
-      monsterTextures.set(kind, texture);
-    }
-    const plane = group.userData.art; plane.material.map = texture; plane.material.needsUpdate = true; plane.visible = true;
-  }
-
   function updateActors(world, player, time) {
     const visible = new Set(); interactables.length = 0;
     const V = window.Vespera, me = player.id;
     const add = (id, kind, entity, tint) => {
       if (!entity || Math.abs(entity.x - player.x) > RADIUS || Math.abs(entity.y - player.y) > RADIUS) return;
       visible.add(id);
+      const signature = kind === 'monster' ? entity.kind : JSON.stringify([entity.classId, entity.appearance, entity.look, entity.equipment, entity.isekai?.chosen, entity.isekai?.race, tint]);
       let record = actors.get(id);
-      if (!record) {
-        const group = actor(tint, kind !== 'npc'); root.add(group);
-        record = { group, kind, appearance: '' }; actors.set(id, record);
-        if (kind === 'monster') setMonsterArt(group, entity.kind);
+      if (!record || record.appearance !== signature) {
+        if (record) { disposeActor(record.group); root.remove(record.group); }
+        const group = createActor(tint, kind === 'monster' ? entity.kind : '', false, kind !== 'monster' ? entity : null, V.items); root.add(group);
+        group.userData.entityId = id;
+        record = { group, kind, appearance: signature, x: entity.x, y: entity.y }; actors.set(id, record);
       }
-      record.group.position.set(entity.x - centerX, 0.025 + Math.sin(time * 2.2 + entity.x) * 0.025, centerY - entity.y);
-      record.group.rotation.y = kind === 'player' ? (entity.dir || 0) * Math.PI / 2 : Math.atan2(player.x - entity.x, entity.y - player.y);
-      if (kind === 'player') {
-        const appearance = `${entity.classId}|${entity.appearance}|${JSON.stringify(entity.look || null)}`;
-        if (record.appearance !== appearance) {
-          const texture = avatarTexture(entity), plane = record.group.userData.art;
-          if (texture && plane) { plane.material.map?.dispose(); plane.material.map = texture; plane.material.needsUpdate = true; plane.visible = true; }
-          record.appearance = appearance;
-        }
+      const dx = entity.x - record.x, dy = entity.y - record.y;
+      const moving = Math.hypot(dx, dy) > .001;
+      record.x = entity.x; record.y = entity.y;
+      const floating = record.group.userData.shape === 'spirit';
+      record.group.position.set(entity.x - centerX, floating ? .08 + Math.sin(time * 2.2 + entity.x) * .06 : .025, centerY - entity.y);
+      record.group.userData.limbs.forEach((limb, i) => { limb.rotation.x = moving ? Math.sin(time * 9 + (limb.userData.walkPhase ?? i * Math.PI)) * .3 : 0; });
+      const attackAge = world.time - entity.attackAt;
+      if (kind === 'player' && record.group.userData.weaponArm && attackAge >= 0 && attackAge < .48) {
+        record.group.userData.weaponArm.rotation.x -= Math.sin(attackAge / .48 * Math.PI) * .9;
       }
+      record.group.rotation.y = kind === 'player' ? actorYaw(entity.dir) : kind === 'npc' && moving ? Math.atan2(-dx, dy) : Math.atan2(entity.x - player.x, player.y - entity.y);
       if (kind !== 'player') interactables.push({ mesh: record.group.userData.body, kind, entity });
     };
     for (const monster of Object.values(world.monsters || {})) {
@@ -196,7 +157,7 @@ export function createSpatialWorld(scene, getSession) {
     }
     for (const npc of V.npcsAt?.(world, player) || []) if (!npc.inside) add(`npc:${npc.id}`, 'npc', npc, '#927e66');
     for (const [id, record] of actors) if (!visible.has(id)) {
-      record.group.userData.art?.material.map?.dispose(); root.remove(record.group); actors.delete(id);
+      disposeActor(record.group); root.remove(record.group); actors.delete(id);
     }
   }
 
@@ -213,14 +174,19 @@ export function createSpatialWorld(scene, getSession) {
           Object.keys(world.harvested || {}).length !== harvestCount) rebuild(world, x, y);
       root.position.set(centerX - player.x, 0, player.y - centerY);
       updateActors(world, player, elapsed);
+      root.updateMatrixWorld(true);
       scene.background.set(terrainKind(window.Vespera.tileAt(x, y, world.seed)) === 'stone' ? '#202531' : '#83b3c9');
       if (!scene.fog) scene.fog = new THREE.Fog(scene.background, 13, 29);
       else scene.fog.color.copy(scene.background);
     },
     dispose() {
-      scene.remove(root); root.traverse(object => { object.geometry?.dispose?.(); });
-      for (const record of actors.values()) record.group.userData.art?.material.map?.dispose();
-      for (const texture of monsterTextures.values()) texture.dispose();
+      for (const record of actors.values()) { disposeActor(record.group); root.remove(record.group); }
+      actors.clear(); interactables.length = 0;
+      scene.remove(root);
+      const geometries = new Set(), materials = new Set();
+      root.traverse(object => { if (object.geometry) geometries.add(object.geometry); if (object.material) materials.add(object.material); });
+      for (const geometry of geometries) geometry.dispose();
+      for (const material of materials) material.dispose();
       grain.dispose();
     },
   };

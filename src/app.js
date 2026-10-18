@@ -14,6 +14,7 @@ import { VirtualKeyboard } from './ui/keyboard.js';
 import { ArcMenu } from './ui/menu.js';
 import { Teleport } from './ui/teleport.js';
 import { Passthrough } from './core/passthrough.js';
+import { getCamera } from './core/cameraFeed.js';
 import { HandView } from './hands/handView.js';
 import { VideoLayer, CatalogContent, PlayerContent } from './media/youtube.js';
 import { loadGameModule, GAME_OBJECTIVES } from './games/index.js';
@@ -26,6 +27,7 @@ import { createPhysicsKit } from './games/physicsKit.js';
 import { createSceneProps } from './games/sceneProps.js';
 import { roundBoxes, CUBIC_GAMES } from './games/roundGeometry.js';
 import { NetworkRoom } from './core/network.js';
+import { T } from './ui/theme.js';
 
 // Barra que acompanha o corpo devagar (embaixo da visão): início, menu e placar
 class HudBar {
@@ -34,14 +36,14 @@ class HudBar {
     this.group = new THREE.Group(); this.group.visible = false;
     app.rig.add(this.group);
     // pílula de vidro com dois ícones e o placar
-    const bg = makeLabel('', { w: 0.62, h: 0.075, bg: 'rgba(24,25,28,0.9)' });
+    const bg = makeLabel('', { w: 0.62, h: 0.075, bg: T.panel, radius: .12 });
     const home = makeButton(app, { w: 0.055, h: 0.055, icon: 'home', variant: 'ghost', round: true, onClick: () => app.loadGame('lobby') });
     const menu = makeButton(app, { w: 0.055, h: 0.055, icon: 'grid', variant: 'ghost', round: true, onClick: () => app.menu.toggle() });
     home.position.set(-0.27, 0, 0.003); menu.position.set(-0.205, 0, 0.003);
     this.label = makeLabel('', { w: 0.44, h: 0.07, size: 0.4, bg: 'rgba(0,0,0,0)' });
     this.label.position.set(0.075, 0, 0.003);
     this.group.add(bg, home, menu, this.label);
-    this.objective = makeLabel('', { w: 1.08, h: 0.14, size: 0.20, fg: '#f2e6c9', bg: 'rgba(15,20,28,0.91)' });
+    this.objective = makeLabel('', { w: 1.08, h: 0.14, size: 0.20, fg: T.text, bg: T.panel });
     this.objective.position.set(0, 0.15, 0);
     this.objective.visible = false;
     this.objectiveDismissed = false;
@@ -51,8 +53,8 @@ class HudBar {
     this.objectiveClose.visible = false;
     this.group.add(this.objective, this.objectiveClose);
     this.guide = new THREE.Group();
-    const guideBg = makeLabel('', { w: 0.86, h: 0.23, bg: 'rgba(16,20,28,0.94)' });
-    this.guideTitle = makeLabel('', { w: 0.8, h: 0.055, size: 0.42, fg: '#87bdff', bg: 'rgba(0,0,0,0)' });
+    const guideBg = makeLabel('', { w: 0.86, h: 0.23, bg: T.panel });
+    this.guideTitle = makeLabel('', { w: 0.8, h: 0.055, size: 0.42, fg: T.accent, bg: 'rgba(0,0,0,0)' });
     this.guideAction = makeLabel('', { w: 0.8, h: 0.07, size: 0.32, bg: 'rgba(0,0,0,0)' });
     this.guideTip = makeLabel('', { w: 0.8, h: 0.065, size: 0.29, bg: 'rgba(0,0,0,0)' });
     this.guideTitle.position.set(0, 0.074, 0.003);
@@ -207,9 +209,13 @@ export class App {
     this.menu.open && this.menu.toggle(true);
   }
 
-  async start(mode, { hands = false, gemini = false, onStatus = () => {}, initialGame = null } = {}) {
+  async start(mode, { hands = false, gemini = false, cameraFacing = null, onStatus = () => {}, initialGame = null } = {}) {
     this.mode = mode;
+    this.cameraFacing = cameraFacing || (mode === 'cardboard' ? 'environment' : 'user');
     this.audio.unlock();
+    const facing = this.cameraFacing;
+    const cameraTask = (mode === 'cardboard' || hands && mode !== 'xr')
+      ? getCamera(facing).then(video => ({ video }), error => ({ error })) : null;
     document.getElementById('divider').hidden = mode !== 'cardboard';
     if (mode === 'cardboard') {
       try { await document.documentElement.requestFullscreen?.(); } catch { /* ok */ }
@@ -238,26 +244,54 @@ export class App {
     if (this.passthrough.on === null) this.passthrough.on = true;
     if (mode === 'cardboard' && this.passthrough.on) {
       try {
-        const { getCamera } = await import('./core/cameraFeed.js');
         onStatus('Abrindo a câmera traseira…');
-        this.passthrough.attach(await getCamera('environment'), false);
+        const camera = await cameraTask;
+        if (camera.error) throw camera.error;
+        this.passthrough.attach(camera.video, facing === 'user');
       } catch (e) { console.warn('Passthrough indisponível:', e); }
     }
     if (hands && mode !== 'xr') {
       try {
-        const { HandTracker } = await import('./hands/handTracker.js');
-        this.hands = new HandTracker();
-        this.hands.hfovProvider = () => this.passthrough.displayHFOV; // mão virtual em cima da mão real
-        this.hands.onFrame = (frame) => this.passthrough.presentFrame(frame);
-        this.hands.gemini.enabled = gemini;
-        if (gemini) this.hands.gemini.status = 'aguardando mão';
-        await this.hands.start({ facing: mode === 'cardboard' ? 'environment' : 'user', onStatus });
+        const camera = await cameraTask;
+        if (camera.error) throw camera.error;
+        await this.enableHands({ facing, gemini, onStatus });
       } catch (e) {
         console.warn('Mãos indisponíveis:', e);
-        onStatus('Sem câmera — usando olhar/toque.');
+        this.handError = e.message;
+        onStatus('Mãos indisponíveis: ' + e.message);
+        this.hands?.stop();
         this.hands = null;
       }
     }
+  }
+
+  async enableHands({ facing = this.cameraFacing || 'environment', gemini = false, onStatus = () => {} } = {}) {
+    if (this.hands?.running || this._handsBusy) return;
+    if (this.mode === 'xr') { this.handError = 'Use o rastreamento nativo do headset.'; return; }
+    this._handsBusy = true;
+    try {
+      const video = await getCamera(facing);
+      this.passthrough.attach(video, facing === 'user');
+      const { HandTracker } = await import('./hands/handTracker.js');
+      const tracker = new HandTracker(); this.hands = tracker;
+      tracker.hfovProvider = () => this.passthrough.displayHFOV;
+      tracker.onFrame = frame => this.passthrough.presentFrame(frame);
+      tracker.gemini.enabled = gemini;
+      if (gemini) tracker.gemini.status = 'aguardando mão';
+      await tracker.start({ facing, onStatus });
+      this.handError = null;
+    } catch (error) {
+      this.hands?.stop(); this.hands = null;
+      this.handError = error.message;
+      onStatus('Mãos indisponíveis: ' + error.message);
+      throw error;
+    } finally { this._handsBusy = false; }
+  }
+
+  async toggleHands() {
+    if (this._handsBusy) return;
+    if (this.hands?.running) { this.hands.stop(); this.hands = null; return; }
+    try { await this.enableHands(); } catch (error) { console.warn('Rastreamento indisponível:', error); }
   }
 
   gameCtx() {
@@ -276,6 +310,8 @@ export class App {
       // olhar inicial um pouco para baixo (mesas, bancadas) no modo tela normal
       lookDown: (pitch = -0.35) => { if (!this.orientation.active) this.look.pitch = pitch; },
       teleport: (o) => { this.teleport.configure(o); this.walk = !!o?.walk; },
+      // Q/E fly down/up instead of turning; the game moves the rig itself.
+      freeFlight: (on) => { this.freeFlight = !!on; },
       uiBusy: (p) => (p ? !!p.uiBusy : this.ui.hovering || !!this.ui.drag),
       pointers: () => (this.input.pointers || []).filter((q) => !q.system && !q.stale && !q.uiBusy && !q.locomotion),
       setPointerHit: (p) => { this.pointerHit = p ? (this._ph || (this._ph = new THREE.Vector3())).copy(p) : null; },
@@ -308,7 +344,7 @@ export class App {
       this.env.set({}); this.scene.fog = null;
       this.renderer.localClippingEnabled = false;
       this.rig.position.set(0, 0, 0); this.rig.rotation.set(0, 0, 0);
-      this.teleport.configure({}); this.walk = false;
+      this.teleport.configure({}); this.walk = false; this.freeFlight = false;
       this.pointerHit = null; this.hud.set(''); this.hud.pose();
       this.look.pitch = 0;
       this.handView.visible = true;
@@ -336,6 +372,7 @@ export class App {
       });
       this.hud.group.visible = id !== 'lobby';
       this.hud.controls(id);
+      if (id === 'pingpong' || id === 'universe' && this.mode === 'flat') this.hud.guide.visible = false;
       if (id === 'lobby') this.menu.toggle(true);
       this.passthrough.reset();
       // texturas finais e shaders prontos ANTES de mostrar: nada de travadinha no primeiro minuto
@@ -374,8 +411,8 @@ export class App {
   _look(dt) {
     const d = this.input.consumeLook();
     const keys = this.input.keys;
-    if (keys.has('ArrowLeft') || keys.has('KeyQ')) d.x -= 260 * dt;
-    if (keys.has('ArrowRight') || keys.has('KeyE')) d.x += 260 * dt;
+    if (keys.has('ArrowLeft') || !this.freeFlight && keys.has('KeyQ')) d.x -= 260 * dt;
+    if (keys.has('ArrowRight') || !this.freeFlight && keys.has('KeyE')) d.x += 260 * dt;
     if (this.mode !== 'cardboard' && keys.has('ArrowUp')) d.y -= 200 * dt;
     if (this.mode !== 'cardboard' && keys.has('ArrowDown')) d.y += 200 * dt;
     if (this.orientation.update()) { this.orientation.manualYaw -= d.x * 0.004; return; }

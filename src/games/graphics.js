@@ -5,6 +5,7 @@ import { std, glowTexture } from './common.js';
 import { rng } from '../core/util.js';
 
 export const GRAPHICS_THEMES = {
+  pingpong: { name: 'Clube de mesa', accent: '#bb6246', features: ['mesa regulamentar', 'rede tecida', 'salão de madeira'] },
   plaza: { name: 'Praça social', accent: '#ffb347', features: ['salas geradas', 'avatar', 'carros'] },
   complex: { name: 'Instalação de testes', accent: '#f2a33a', features: ['painéis', 'grade de piso', 'faixas de aviso'] },
   sandbox: { name: 'Hangar de experimentos', accent: '#90d2ec', features: ['painéis', 'grade de piso', 'bancadas'] },
@@ -317,6 +318,15 @@ export function createGameGraphics(ctx, id) {
       instances(new THREE.BoxGeometry(0.18, 0.018, 0.02), material('#b9aa8c', { metalness: 0.65, roughness: 0.35 }), handles);
       grid(2.35, 0.67, 0.6, [0, 0.002, -0.62], '#443322', 0.2);
       beam([-1.4, 1.15, -2.8], [0.8, 2.4], '#ffd9a0', -0.4, 0.045); break;
+    }
+    case 'pingpong': {
+      for (const x of [-2.7, 2.7]) {
+        box([1.2, .045, .42], '#a78b65', [x, .46, -3.6]);
+        box([1.2, .045, .045], '#314e42', [x, .25, -3.6]);
+      }
+      box([1.7, .72, .035], '#c2b18b', [0, 2.15, -5.2]);
+      box([1.58, .60, .04], '#304d41', [0, 2.15, -5.17]);
+      break;
     }
     case 'tablegames': {
       add(new THREE.PlaneGeometry(4.5, 4.5), material('#52252b', { map: ctx.tex.get('rug') }), [0, 0.008, -0.75], [-Math.PI / 2, 0, 0]);

@@ -27,12 +27,30 @@
         <button id="btn-xr" class="primary" hidden>Entrar em VR</button>
         <button id="btn-cardboard" class="primary">Óculos de celular (VR Box)</button>
         <button id="btn-rhythm">Ritmo de Luz · escolher música</button>
-        <button id="btn-flat">Tela normal</button>
-        <a class="vespera-link" href="vespera-rpg2/">Jogar Véspera RPG2</a>
+        <button id="btn-pingpong">Tênis de mesa VR</button>
+        <button id="btn-universe-pc">Universe Sandbox · modo PC (sem VR)</button>
+        <button id="btn-pc">Modo PC · teclado e mouse</button>
+        <a class="vespera-link" href="vespera-rpg2/?mode=vr">Véspera RPG2 VR</a>
       </div>
       <label class="check"><input type="checkbox" id="chk-hands" checked> Rastrear as mãos com a câmera</label>
-      <label class="check"><input type="checkbox" id="chk-gemini" checked> Calibração das mãos com Gemini</label>
-      <p id="status" class="status">Pronto.</p>
+      <details id="camera-setup" class="help">
+        <summary>Testar câmera e mãos</summary>
+        <label for="camera-facing">Câmera</label>
+        <select id="camera-facing"><option value="environment">Traseira · VR Box</option><option value="user">Frontal</option></select>
+        <button id="camera-test" type="button">Iniciar teste</button>
+        <video id="camera-preview" autoplay muted playsinline hidden></video>
+        <p id="camera-test-status" class="status" role="status">Mostre a mão diante da lente escolhida.</p>
+      </details>
+      <label class="check"><input type="checkbox" id="chk-gemini"> Calibrar mãos da câmera com Gemini</label>
+      <details id="gemini-setup" class="help">
+        <summary>Configurar Gemini</summary>
+        <p>Informe sua chave do Google AI Studio. Ela fica apenas na memória desta página, até recarregar. O Gemini recebe pontos das mãos, sem imagens. A câmera continua funcionando sem Gemini.</p>
+        <label for="gemini-key">Chave Gemini</label>
+        <input id="gemini-key" type="password" autocomplete="off" spellcheck="false" placeholder="Cole sua chave do Google AI Studio">
+        <button id="gemini-save" type="button">Ativar calibração</button>
+        <p id="gemini-status" role="status" class="status"></p>
+      </details>
+      <p id="status" class="status" role="status">Pronto.</p>
       <details class="help">
         <summary>Gestos inspirados no Meta Quest</summary>
         <ul>

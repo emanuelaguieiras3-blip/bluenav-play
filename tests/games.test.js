@@ -57,6 +57,25 @@ function fixture(count, source = 'hand') {
   return { ctx, input, app, disposers, texture };
 }
 
+test('tactical: walking rotates legs at the hip and keeps boots near the ground', async () => {
+  const f = fixture(1), module = await loadGameModule('tactical'), instance = module.default.create(f.ctx);
+  try {
+    assert.equal(instance.bots.length, 4);
+    const bot = instance.bots[0];
+    assert.equal(bot.body.geometry.type, 'LatheGeometry');
+    assert.ok(bot.head.children.length >= 2, 'helmet and visor are present');
+    for (const leg of bot.legs) {
+      assert.equal(leg.name, 'hip-pivot'); assert.equal(leg.position.y, .76);
+      assert.ok(leg.children.some(mesh => mesh.geometry === instance.bots[1].legs[0].children[1].geometry), 'boots share geometry');
+    }
+    instance.update(1 / 60, Math.PI / 12); f.app.scene.updateMatrixWorld(true);
+    assert.ok(Math.abs(bot.legs[0].rotation.x - .15) < 1e-8);
+    const bounds = new THREE.Box3().setFromObject(bot.legs[0]);
+    assert.ok(bounds.min.y > -.02 && bounds.min.y < .05, 'hip rotation does not swing the entire leg around the floor');
+    assert.ok(bot.headBox.min.y > 1.5 && bot.box.max.y < 2, 'combat bounds follow the new body');
+  } finally { disposeTree(f.ctx.root); f.texture.dispose(); }
+});
+
 for (const game of GAMES) for (const count of [1, 2]) for (const source of ['hand', 'xr']) {
   test(`${game.id}: lógica ${source} com ${count} ponteiro(s), 180 frames e pinça`, async () => {
     const f = fixture(count, source), module = await loadGameModule(game.id);

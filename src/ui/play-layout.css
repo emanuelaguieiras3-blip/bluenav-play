@@ -1,0 +1,90 @@
+#start { display: block; padding: 0; background: #f4f2ec; color: #233d35; scroll-behavior: smooth; }
+#start [hidden] { display: none !important; }
+.play-shell { width: min(1240px, calc(100% - 80px)); margin: auto; }
+.play-header { min-height: 100px; display: flex; align-items: center; justify-content: space-between; gap: 24px; border-bottom: 1px solid #d7dcd1; }
+#start .logo { display: flex; align-items: center; gap: 10px; color: #213b32; text-decoration: none; font-size: 22px; letter-spacing: -.7px; font-weight: 600; }
+#start .logo b { color: #758579; font-weight: 400; }
+.play-header nav { display: flex; gap: 34px; align-items: center; }
+.play-header nav a { padding: 14px 0; font-size: 14px; color: #66766b; text-decoration: none; }
+.play-header nav a:hover, .play-header nav a.nav-active { color: #223e33; box-shadow: inset 0 -2px #b3684e; }
+.header-note { display: flex; gap: 9px; align-items: center; font-size: 12px; color: #677a6d; }
+.header-note i { width: 6px; height: 6px; background: #62836a; border-radius: 50%; }
+.play-hero { display: grid; grid-template-columns: .83fr 1.17fr; gap: 68px; padding: 56px 0 46px; align-items: center; }
+#start .eyebrow { font-size: 10px; letter-spacing: .16em; color: #7b8477; font-weight: 700; }
+.hero-copy h1 { margin: 24px 0; font: 500 clamp(42px, 4.8vw, 66px)/1.08 Georgia, serif; letter-spacing: -.05em; }
+.hero-copy h1 em { color: #a35942; font-weight: 400; }
+.hero-copy p { font-size: 15px; line-height: 1.75; color: #667569; }
+.text-link { display: inline-flex; gap: 32px; padding: 12px 0; border-bottom: 1px solid #6a7c6a; text-decoration: none; color: #284d3d; font-size: 13px; font-weight: 650; }
+.hero-note { display: flex; align-items: center; gap: 12px; margin-top: 36px; color: #455f4e; font-size: 12px; line-height: 1.6; }
+.hero-note small { font-size: 11px; color: #7d8878; }
+#start .hero-game { position: relative; display: block; min-width: 0; padding: 0; overflow: hidden; text-align: left; border-radius: 18px; color: #fff7e7; background: #234d3d; box-shadow: 0 20px 38px -24px #24493870; aspect-ratio: 1.38; }
+.hero-game > img { width: 100%; height: 100%; display: block; object-fit: cover; }
+.hero-game::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, #142f2222 25%, #132e26d9 100%); pointer-events: none; }
+.hero-game-tag { position: absolute; z-index: 1; top: 24px; left: 24px; padding: 9px 12px; background: #f4f2ec; color: #274a39; border-radius: 6px; font-size: 9px; letter-spacing: .12em; font-weight: 750; }
+.hero-game-caption { position: absolute; z-index: 1; bottom: 26px; left: 28px; right: 28px; display: flex; justify-content: space-between; align-items: flex-end; }
+.hero-game-caption small { display: block; font-size: 9px; letter-spacing: .14em; color: #d1dacc; }
+.hero-game-caption strong { display: block; margin: 10px 0; font: 500 56px/.98 Georgia, serif; letter-spacing: -.04em; }
+.game-summary { display: block; color: #d6e0d2; font-size: 12px; }
+.play-disc { display: grid; place-items: center; flex-shrink: 0; width: 48px; height: 48px; border: 1px solid #e1e6d77a; border-radius: 50%; font-size: 23px; }
+.hero-game:hover .play-disc { background: #eee6d3; color: #234d3d; }
+.play-setup { display: grid; grid-template-columns: 1fr 1.65fr; gap: 40px; align-items: start; background: #e9ece2; border-radius: 14px; padding: 30px; }
+.play-setup h2 { margin: 10px 0; font-size: 21px; font-weight: 550; letter-spacing: -.7px; }
+.play-setup p { color: #6a7c69; font-size: 12px; }
+.mode-buttons { display: flex; gap: 10px; }
+#start .mode-card { flex: 1; min-width: 0; padding: 16px; background: #f6f5ef; color: #304d3c; border: 1px solid #d3dace; border-radius: 9px; text-align: left; }
+#start .mode-card:hover { background: #fffdf7; border-color: #8b9f85; }
+.mode-symbol { float: right; font-size: 21px; color: #668163; }
+.mode-card strong { display: block; font-size: 13px; }
+.mode-card small { display: block; margin-top: 7px; color: #7b8974; font-size: 11px; font-weight: 400; }
+.setup-checks { display: flex; flex-wrap: wrap; gap: 8px 22px; padding-top: 15px; }
+#start .check { display: flex; align-items: center; margin: 0; font-size: 11px; color: #596f5c; gap: 8px; }
+#start .check input { accent-color: #3f694b; width: 15px; height: 15px; }
+#start .status { width: 100%; margin: 0; color: #75846e; font-size: 11px; }
+.catalog-section, .apps-section { padding-top: 60px; scroll-margin-top: 20px; }
+.section-heading { display: flex; justify-content: space-between; gap: 20px; align-items: flex-end; margin-bottom: 24px; }
+.section-heading h2 { margin: 10px 0 0; font: 500 31px/1.2 Georgia, serif; letter-spacing: -.9px; }
+.section-count { color: #7b8776; font-size: 11px; padding-bottom: 4px; }
+.catalog-filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 24px; }
+#start .catalog-filters button { border: 1px solid #d8ddd2; border-radius: 7px; font-size: 11px; padding: 10px 14px; font-weight: 500; color: #5c715f; background: transparent; }
+#start .catalog-filters button[aria-pressed=true] { background: #294c3d; border-color: #294c3d; color: #f6f3e9; }
+.game-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px 18px; }
+#start .game-card { display: block; width: 100%; padding: 0; min-width: 0; background: transparent; color: #304f3d; text-align: left; border-radius: 10px; }
+.game-card .cover-wrap { position: relative; display: block; aspect-ratio: 1.62; border-radius: 10px; overflow: hidden; background: #d7dace; }
+.game-card img { width: 100%; height: 100%; display: block; object-fit: cover; transition: transform .2s; }
+.game-card:hover img { transform: scale(1.04); }
+.cover-mark { position: absolute; left: 10px; top: 10px; background: #f6f3e9ed; padding: 5px; border-radius: 5px; }
+.cover-mark img { width: 16px; height: 16px; }
+.game-info { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 13px 2px 0; }
+.game-info strong { display: block; font-size: 13px; font-weight: 650; }
+.game-info small { display: block; margin-top: 5px; font-size: 10px; color: #7e8a78; font-weight: 450; }
+.game-info > span:last-child { color: #7b8c77; font-size: 18px; }
+.feature-strip { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 40px; }
+#start .vespera-link, #start .music-card { display: flex; align-items: center; gap: 18px; padding: 20px; border: 1px solid #d5dacd; color: #294b38; background: #e8ebe1; text-align: left; border-radius: 12px; text-decoration: none; }
+.feature-strip img { width: 80px; height: 80px; border-radius: 8px; object-fit: cover; }
+.feature-strip small { display: block; font-size: 8px; letter-spacing: .1em; color: #839075; }
+.feature-strip strong { display: block; margin: 7px 0; font: 500 23px Georgia, serif; }
+.feature-strip span span { font-size: 11px; color: #73866a; font-weight: 400; }
+.feature-strip b { margin-left: auto; font-size: 22px; font-weight: 400; }
+.app-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
+.home-app { min-width: 0; padding: 0; display: block; overflow: hidden; background: #e7e9e0; border: 1px solid #d5dace; border-radius: 10px; text-decoration: none; color: #324d3c; }
+.home-app .app-cover { height: 142px; padding: 0; background: #23382e; display: block; overflow: hidden; }
+.home-app img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.home-app[data-app-id=vrchat] img, .home-app[data-app-id=youtube] img { object-fit: contain; padding: 26px; }
+.home-app .app-info { padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; font-size: 12px; }
+.home-app:hover { border-color: #8d9c82; }
+.apps-note { color: #859179; font-size: 11px; margin-top: 15px; }
+#start .help { color: #657860; border-top: 1px solid #d2d9c9; margin-top: 42px; padding-top: 24px; }
+#start .help summary { color: #49623f; font-size: 12px; }
+.help-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; font-size: 12px; line-height: 1.6; }
+.help-grid strong { display: block; margin-bottom: 8px; color: #324c38; }
+.play-footer { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 42px 0; margin-top: 30px; border-top: 1px solid #d6dccd; }
+#start .play-footer .logo { font-size: 14px; }
+.play-footer > span, .play-footer > a:last-child { font-size: 10px; color: #88947c; text-decoration: none; }
+.screen-panel .app-card { border: 1px solid var(--line); border-radius: 14px; padding: 0 18px 16px; overflow: hidden; margin-top: 16px; }
+.app-card .app-banner { display: block; width: calc(100% + 36px); max-height: 210px; object-fit: cover; margin: 0 -18px 18px; background: #f4f2ec; }
+.app-card[data-app-id=vrchat] .app-banner { object-fit: contain; padding: 20px; }
+@media (max-width: 900px) { .play-shell { width: calc(100% - 44px); } .header-note { display: none; } .play-hero { gap: 30px; padding-top: 36px; } .hero-copy h1 { font-size: 48px; } .hero-game-caption strong { font-size: 42px; } .play-setup { grid-template-columns: 1fr; gap: 18px; } .game-grid, .app-grid { grid-template-columns: repeat(3, minmax(0,1fr)); } }
+@media (max-width: 600px) { .play-shell { width: calc(100% - 32px); } .play-header { min-height: 82px; flex-wrap: wrap; gap: 0; padding: 14px 0; } #start .logo { font-size: 19px; } .play-header nav { gap: 18px; } .play-header nav a { font-size: 11px; } .play-header nav a:last-child { display: none; } .play-hero { grid-template-columns: 1fr; gap: 28px; padding: 34px 0 28px; } .hero-copy h1 { font-size: 50px; margin: 18px 0; } .hero-note { display: none; } .hero-game-caption strong { font-size: 44px; } .play-setup { padding: 22px; } .mode-card { padding: 12px !important; } .mode-symbol { font-size: 15px; } .game-grid, .app-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 20px 12px; } .catalog-section, .apps-section { padding-top: 42px; } .section-heading h2 { font-size: 26px; } .section-heading { align-items: start; } .section-count { max-width: 100px; text-align: right; line-height: 1.5; } .game-info strong { font-size: 12px; } .feature-strip { grid-template-columns: 1fr; } .home-app .app-cover { height: 112px; } .home-app[data-app-id=vrchat] img,.home-app[data-app-id=youtube] img { padding: 12px; } .help-grid { grid-template-columns: 1fr 1fr; } .play-footer { flex-wrap: wrap; padding: 24px 0; } .play-footer > span { width: 100%; order: 3; } }
+@media (prefers-reduced-motion: reduce) { #start { scroll-behavior: auto; } .game-card img { transition: none; } }
+.home-app[data-app-id=youtube] .app-cover { background: #fff; }
+.home-app[data-app-id=youtube] img { object-fit: cover; padding: 0; }

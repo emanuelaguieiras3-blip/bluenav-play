@@ -1,5 +1,5 @@
 // Avatar e carros BlueNav. Estilo de rede social VR (corpo arredondado
-// flutuante, rosto expressivo, mãos soltas), com arte própria.
+// articulado, rosto expressivo e mãos rastreadas), com arte própria.
 import * as THREE from 'three';
 import { std, glowTexture } from '../common.js';
 import { buildCar } from '../carModel.js';
@@ -35,6 +35,12 @@ const geo = {
   bun: new THREE.SphereGeometry(0.06, 14, 10), tail: new THREE.CapsuleGeometry(0.035, 0.14, 4, 10), fringe: new THREE.SphereGeometry(0.17, 24, 8, -1.4, 2.8, 0.25, 0.55), afro: new THREE.SphereGeometry(0.21, 20, 14),
   brim: new THREE.CylinderGeometry(0.2, 0.2, 0.02, 24), tall: new THREE.CylinderGeometry(0.12, 0.13, 0.22, 20), crown: new THREE.CylinderGeometry(0.14, 0.12, 0.09, 8, 1, true), ring: new THREE.TorusGeometry(0.14, 0.015, 8, 32),
   ear: new THREE.SphereGeometry(0.06, 12, 8).scale(0.6, 1.4, 0.3), horn: new THREE.ConeGeometry(0.03, 0.12, 10), lens: new THREE.TorusGeometry(0.038, 0.008, 6, 18), bar: new THREE.CylinderGeometry(0.006, 0.006, 0.05, 6).rotateZ(Math.PI / 2),
+  nose: new THREE.SphereGeometry(.023, 10, 8).scale(.8, 1, 1.1),
+  neck: new THREE.CylinderGeometry(.052, .065, .12, 12),
+  armSegment: new THREE.CylinderGeometry(.036, .042, 1, 10),
+  elbow: new THREE.SphereGeometry(.041, 10, 8),
+  leg: new THREE.CapsuleGeometry(.064, .18, 4, 10),
+  shoe: new THREE.SphereGeometry(.077, 12, 8).scale(1, .65, 1.7),
   visor: new THREE.SphereGeometry(0.168, 20, 8, -0.9, 1.8, 1.1, 0.6), mask: new THREE.SphereGeometry(0.17, 20, 8, -1.1, 2.2, 1.6, 0.5), mustache: new THREE.TorusGeometry(0.035, 0.012, 6, 12, Math.PI),
   lensDisc: new THREE.CircleGeometry(0.037, 16), shadow: new THREE.PlaneGeometry(0.7, 0.7).rotateX(-Math.PI / 2),
 };
@@ -51,6 +57,7 @@ function hand(skin, side) {
 
 // Returns a group with userData.hands [left, right], head, body, eyes and mouth.
 export function buildAvatar(lookIn, { tint = null, shadow = true } = {}) {
+  const at = (parent, mesh, x, y, z) => { mesh.position.set(x, y, z); parent.add(mesh); return mesh; };
   const look = validLook(lookIn), g = new THREE.Group(); g.name = 'avatar';
   const skin = std({ color: itemOf('skin', look.skin).value, roughness: 0.55 });
   const shirt = itemOf('shirt', look.shirt), shirtColor = tint || shirt.value;
@@ -60,10 +67,12 @@ export function buildAvatar(lookIn, { tint = null, shadow = true } = {}) {
   const collar = new THREE.Mesh(geo.collar, std({ color: new THREE.Color(shirtColor).multiplyScalar(0.7), roughness: 0.7 })); collar.position.y = 0.26; body.add(collar);
   const head = new THREE.Group(); head.position.y = 1.47; g.add(head);
   head.add(new THREE.Mesh(geo.head, skin));
+  at(head, new THREE.Mesh(geo.nose, skin), 0, -.018, -.163);
+  for (const s of [-1, 1]) at(head, new THREE.Mesh(geo.ear, skin), s * .157, -.005, .005).scale.set(.55, .38, .75);
+  at(g, new THREE.Mesh(geo.neck, skin), 0, 1.31, 0);
   const white = std({ color: '#ffffff', roughness: 0.3 }), dark = std({ color: '#1b1d22', roughness: 0.35 });
   const hairColor = itemOf('hairColor', look.hairColor).value, hairMat = std({ color: hairColor, roughness: 0.85 });
   const face = itemOf('face', look.face).value, eyes = [];
-  const at = (parent, mesh, x, y, z) => { mesh.position.set(x, y, z); parent.add(mesh); return mesh; };
   for (const s of [-1, 1]) {
     const eye = at(head, new THREE.Group(), s * 0.055, 0.025, -0.14);
     eye.add(new THREE.Mesh(geo.sclera, white));
@@ -111,11 +120,24 @@ export function buildAvatar(lookIn, { tint = null, shadow = true } = {}) {
     }
   }
   const hands = [-1, 1].map(s => at(g, hand(skin, s), s * 0.3, 0.92, -0.16));
+  const trousers = std({ color: '#34433e', roughness: .9 }), soles = std({ color: '#e0d7c5', roughness: .85 });
+  for (const s of [-1, 1]) {
+    at(g, new THREE.Mesh(geo.leg, trousers), s * .085, .53, .01);
+    at(g, new THREE.Mesh(geo.leg, trousers), s * .085, .245, .01);
+    at(g, new THREE.Mesh(geo.shoe, soles), s * .085, .065, -.045);
+  }
+  const arms = [-1, 1].map(s => ({
+    shoulder: new THREE.Vector3(s * .19, 1.18, .02),
+    upper: at(g, new THREE.Mesh(geo.armSegment, cloth), 0, 0, 0),
+    lower: at(g, new THREE.Mesh(geo.armSegment, skin), 0, 0, 0),
+    elbow: at(g, new THREE.Mesh(geo.elbow, skin), 0, 0, 0),
+  }));
   if (shadow) {
     shadowMat ||= new THREE.MeshBasicMaterial({ map: glowTexture('rgba(0,0,0,1)'), transparent: true, opacity: 0.32, depthWrite: false });
     const sh = at(g, new THREE.Mesh(geo.shadow, shadowMat), 0, 0.02, 0); sh.userData.noCollide = true; g.userData.shadow = sh;
   }
-  Object.assign(g.userData, { hands, head, body, look, eyes, mouth, blinkAt: 1 + Math.random() * 3 });
+  Object.assign(g.userData, { hands, head, body, arms, look, eyes, mouth, blinkAt: 1 + Math.random() * 3 });
+  updateAvatarArms(g);
   return g;
 }
 
@@ -127,6 +149,28 @@ export function animateAvatar(avatar, t, dt) {
   for (const e of u.eyes) e.eye.scale.y = closing ? 0.12 : 1;
   if (u.blinkAt <= 0) u.blinkAt = 2 + Math.random() * 3.5;
   if (!u.posed) u.body.position.y = 1.0 + Math.sin(t * 2.1 + avatar.id) * 0.008;
+  updateAvatarArms(avatar);
+}
+
+const armUp = new THREE.Vector3(0, 1, 0), armDelta = new THREE.Vector3(), armBend = new THREE.Vector3(), armElbow = new THREE.Vector3();
+export function updateAvatarArms(avatar) {
+  const u = avatar.userData;
+  const connect = (mesh, a, b) => {
+    armDelta.copy(b).sub(a); const length = armDelta.length();
+    mesh.position.copy(a).lerp(b, .5); mesh.scale.y = Math.max(.001, length);
+    if (length > 1e-5) mesh.quaternion.setFromUnitVectors(armUp, armDelta.divideScalar(length));
+  };
+  u.arms?.forEach((arm, i) => {
+    const wrist = u.hands[i].position, distance = arm.shoulder.distanceTo(wrist);
+    // Tracking can place a wrist beyond anatomical reach. Hide rather than stretch.
+    const visible = distance < .62;
+    arm.upper.visible = arm.lower.visible = arm.elbow.visible = visible;
+    if (!visible) return;
+    armDelta.copy(wrist).sub(arm.shoulder).normalize();
+    armBend.set(0, -1, .25).addScaledVector(armDelta, -armBend.dot(armDelta)).normalize();
+    armElbow.copy(arm.shoulder).lerp(wrist, .5).addScaledVector(armBend, Math.sqrt(Math.max(0, .27 ** 2 - (distance / 2) ** 2)));
+    arm.elbow.position.copy(armElbow); connect(arm.upper, arm.shoulder, armElbow); connect(arm.lower, armElbow, wrist);
+  });
 }
 
 // Drives a full avatar from a head pose and two hand positions (world space).
@@ -136,6 +180,7 @@ export function poseAvatar(avatar, headPos, headQuat, hands = [null, null]) {
   u.head.position.set(0, 1.47, 0); u.head.rotation.set(e.x, 0, e.z, 'YXZ');
   u.body.position.set(0, 1.0, 0.03); u.posed = true;
   hands.forEach((h, i) => { if (h) u.hands[i].position.copy(avatar.worldToLocal(h.clone())); else u.hands[i].position.set(i ? 0.3 : -0.3, 0.92, -0.16); });
+  updateAvatarArms(avatar);
 }
 
 // Car body variants share the curved chassis, scaled and dressed differently.

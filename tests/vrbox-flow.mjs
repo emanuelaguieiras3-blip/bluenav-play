@@ -110,7 +110,7 @@ try {
   await page.waitForFunction(() => !window.__app.game.getState().suspended);
   await page.evaluate(() => window.__app.openSecurity());
   assert.match(await page.getByRole('dialog').innerText(), /Câmera: inativa/);
-  await page.route('https://aiplatform.googleapis.com/**', route => route.fulfill({ json: { candidates: [{ content: { parts: [{ text: 'Teste: ative autenticação em duas etapas.' }] } }] } }));
+  await page.route(/^https:\/\/(aiplatform|generativelanguage)\.googleapis\.com\//, route => route.fulfill({ json: { candidates: [{ content: { parts: [{ text: 'Teste: ative autenticação em duas etapas.' }] } }] } }));
   await page.getByLabel('Pergunta de segurança').fill('Como proteger minha conta?'); await page.getByRole('button', { name: 'Perguntar', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('.security-answer').textContent.includes('duas etapas'));
   await mkdir('artifacts/vrbox', { recursive: true }); await page.screenshot({ path: 'artifacts/vrbox/security.png' });

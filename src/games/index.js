@@ -2,6 +2,7 @@
 // Cada jogo BlueNav é carregado sob demanda (import dinâmico),
 // então a abertura do site continua leve.
 export const GAMES = [
+  { id: 'pingpong', name: 'Tênis de Mesa', emoji: '🏓', color: '#28594d', file: 'pingpong' },
   { id: 'plaza', name: 'Praça BlueNav', emoji: '🎉', color: '#e06a3a', file: 'plaza' },
   { id: 'complex', name: 'Complexo', emoji: '🤖', color: '#4a5560', file: 'complex' },
   { id: 'sandbox', name: 'Laboratório Sandbox', emoji: '🧱', color: '#627b91', file: 'sandbox' },
@@ -30,6 +31,7 @@ export const GAMES = [
 ];
 
 export const GAME_OBJECTIVES = Object.freeze({
+  pingpong: 'Devolva a bola após um quique. Ganhe 11 pontos com dois de vantagem.',
   plaza: 'Personalize o avatar e o carro, escolha uma das 500 salas e ganhe fichas.',
   complex: 'Abra as portas e atravesse o pátio até a saída.',
   sandbox: 'Use a física para derrubar a torre de objetos.',

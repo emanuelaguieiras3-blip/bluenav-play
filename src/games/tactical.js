@@ -16,12 +16,40 @@ export default {
     const receiver = box([0.065, 0.065, 0.24], [0, 0, 0], 'brushedMetal', '#54616c'); root.remove(receiver); gun.add(receiver);
     const grip = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.12, 0.055).translate(0, -0.08, 0.07), std({ map: tex.get('rubber') })); gun.add(grip); root.add(gun);
     const botMat = std({ map: tex.get('fabric'), color: '#b27651' }), armorMat = std({ map: tex.get('brushedMetal'), color: '#4d6572' });
+    const rubberMat = std({ color: '#25302e', roughness: .88 });
+    const visorMat = std({ color: '#d5c28c', roughness: .3, metalness: .4 });
+    const botGeometry = {
+      torso: new THREE.LatheGeometry([[0,.72],[.15,.73],[.18,.87],[.22,1.12],[.24,1.34],[.20,1.44],[.10,1.49],[0,1.50]].map(p => new THREE.Vector2(...p)), 16),
+      head: new THREE.SphereGeometry(.15, 16, 12),
+      neck: new THREE.CylinderGeometry(.066, .08, .15, 12),
+      helmet: new THREE.SphereGeometry(.16, 16, 8, 0, Math.PI * 2, 0, Math.PI * .58),
+      visor: new THREE.BoxGeometry(.21, .064, .034),
+      shoulder: new THREE.SphereGeometry(.085, 10, 8),
+      arm: new THREE.CapsuleGeometry(.054, .31, 4, 10).translate(0, -.22, .025),
+      hand: new THREE.SphereGeometry(.061, 10, 8).scale(.8, 1.2, 1),
+      leg: new THREE.CapsuleGeometry(.065, .59, 4, 10).translate(0, -.38, 0),
+      boot: new THREE.SphereGeometry(.08, 12, 8).scale(1, .65, 1.65),
+      belt: new THREE.CylinderGeometry(.185, .19, .065, 16),
+    };
     const bots = Array.from({ length: 4 }, (_, i) => {
-      const mesh = new THREE.Group();
-      const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.5, 4, 8).translate(0, 1.15, 0), armorMat);
-      const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 12, 8).translate(0, 1.72, 0), botMat);
-      const legs = [-1, 1].map(s => new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.72, 0.15).translate(s * 0.13, 0.38, 0), botMat));
-      mesh.add(body, head, ...legs); mesh.position.set(-3 + i * 2, 0, -7.7); root.add(mesh);
+      const mesh = new THREE.Group(); mesh.name = 'tactical-adversary';
+      const body = new THREE.Mesh(botGeometry.torso, armorMat);
+      const head = new THREE.Mesh(botGeometry.head, botMat); head.position.y = 1.72;
+      const neck = new THREE.Mesh(botGeometry.neck, rubberMat); neck.position.y = 1.54; mesh.add(neck);
+      const helmet = new THREE.Mesh(botGeometry.helmet, armorMat); helmet.position.y = .025; head.add(helmet);
+      const visor = new THREE.Mesh(botGeometry.visor, visorMat); visor.position.set(0, .02, .143); head.add(visor);
+      const belt = new THREE.Mesh(botGeometry.belt, rubberMat); belt.position.y = .80; mesh.add(belt);
+      const legs = [-1, 1].map(s => {
+        const leg = new THREE.Group(); leg.name = 'hip-pivot'; leg.position.set(s * .12, .76, 0);
+        leg.add(new THREE.Mesh(botGeometry.leg, botMat));
+        const boot = new THREE.Mesh(botGeometry.boot, rubberMat); boot.position.set(0, -.71, .045); leg.add(boot); return leg;
+      });
+      const arms = [-1, 1].map(s => {
+        const arm = new THREE.Group(); arm.position.set(s * .27, 1.37, 0); arm.rotation.x = -.18;
+        arm.add(new THREE.Mesh(botGeometry.shoulder, armorMat), new THREE.Mesh(botGeometry.arm, botMat));
+        const hand = new THREE.Mesh(botGeometry.hand, rubberMat); hand.position.set(0, -.43, .025); arm.add(hand); return arm;
+      });
+      mesh.add(body, head, ...legs, ...arms); mesh.position.set(-3 + i * 2, 0, -7.7); root.add(mesh);
       return { mesh, body, head, legs, hp: 3, cooldown: 1 + i * 0.5, respawn: 0, box: new THREE.Box3(), headBox: new THREE.Box3() };
     });
     const bulletGeo = new THREE.SphereGeometry(0.022, 6, 4), bulletMat = new THREE.MeshBasicMaterial({ color: '#ffe38b' });
@@ -31,7 +59,7 @@ export default {
     const reload = () => { if (!reloadTime && ammo < 12) { reloadTime = 1.4; feedback = 'Recarregando'; audio.click(); } };
     const button = ctx.button({ label: 'Recarregar', w: 0.3, h: 0.08, onClick: reload }); button.position.set(0, 0.85, -0.75); root.add(button);
     const muzzle = new THREE.Mesh(new THREE.SphereGeometry(0.055, 6, 4), new THREE.MeshBasicMaterial({ color: '#ffcd5b' })); muzzle.position.z = -0.2; muzzle.visible = false; gun.add(muzzle);
-    return { getState: () => ({ ammo, health, kills, reloading: reloadTime > 0, bullets: bullets.filter(b => b.life > 0).length }), update(dt, t) {
+    return { bots, getState: () => ({ ammo, health, kills, reloading: reloadTime > 0, bullets: bullets.filter(b => b.life > 0).length }), update(dt, t) {
       const eye = ctx.eye(), { main, off } = hands2(ctx);
       gun.visible = !!main;
       if (main) { gun.position.copy(main.source === 'mouse' || main.source === 'gaze' ? eye.clone().addScaledVector(main.ray.direction, 0.45).add(temp.set(0.15, -0.18, 0)) : main.handPos); gun.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, -1), main.ray.direction); }

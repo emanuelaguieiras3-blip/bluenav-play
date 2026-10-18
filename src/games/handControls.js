@@ -1,5 +1,6 @@
 // Controls describe the actual mechanics in each game, including one-hand play.
 export const HAND_CONTROLS = {
+  pingpong: ['A raquete acompanha sua mão e pulso. Toque em Sacar para começar.', 'Uma mão segura a raquete; outra toca nos botões. Trocar mão muda o lado.'],
   plaza: ['Aponte e pince nos painéis, ou aproxime-se e toque. Pinça atira e freia.', 'Duas mãos giram o volante; empurre plataformas com os braços. Relógio volta ao quarto.'],
   complex: ['Pince a arma; pince de novo para atirar. Mão bem aberta solta.', 'Outra mão: carregador no quadril, base da arma, puxe o ferrolho.'],
   sandbox: ['Pince para pegar; gire o pulso. Bata para empurrar.', 'Pesados: pince com as duas mãos. Arremesse!'],
@@ -16,7 +17,7 @@ export const HAND_CONTROLS = {
   kingdom: ['Escolha colocar/quebrar. Mire e faça pinça.', 'Direita coloca blocos. Esquerda quebra blocos.'],
   dungeon: ['Leve a tocha às runas. Feche a mão para andar.', 'Direita: tocha. Feche a esquerda para andar.'],
   galaxy: ['Mire e faça pinça, ou aponte, para disparar.', 'Mire com cada mão e faça pinça para disparar.'],
-  universe: ['Escolha um corpo e pince no espaço para criá-lo.', 'Use as duas mãos para colocar astros; botões exibem impacto e maré gravitacional.'],
+  universe: ['Feche a mão para voar na direção do olhar. Vire a palma para abrir o menu.', 'Esquerda fechada: voa. Palma esquerda: menu. Direita: pince para criar e selecionar.'],
   puzzle: ['Pince uma peça e leve até o encaixe.', 'Uma peça por mão. Pince o vazio para girar.'],
   dive: ['Faça braçadas, ou pince e puxe a água.', 'Faça braçadas com mãos abertas para nadar.'],
   climb: ['Pince uma pedra clara e puxe para baixo.', 'Alterne as mãos nas pedras claras para subir.'],

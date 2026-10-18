@@ -1,5 +1,6 @@
 import { screenPanel } from '../ui/screenPanel.js';
 import { OFFICIAL_GAMES } from './officialGames.js';
+import { APP_ART } from '../ui/catalogArt.js';
 
 export const EXTERNAL_APPS = [
   ...OFFICIAL_GAMES,
@@ -20,6 +21,9 @@ export function createExternalApps(app) {
   const cards = new Map();
   for (const game of EXTERNAL_APPS) {
     const card = document.createElement('article'); card.className = 'app-card';
+    if (APP_ART[game.id]) {
+      const image = document.createElement('img'); image.className = 'app-banner'; image.src = APP_ART[game.id]; image.alt = game.name; image.loading = 'lazy'; card.append(image);
+    }
     const title = document.createElement('h3'); title.textContent = game.name;
     const description = document.createElement('p'); description.textContent = game.description;
     const link = document.createElement('a'); link.textContent = 'Abrir site oficial'; link.href = game.url;

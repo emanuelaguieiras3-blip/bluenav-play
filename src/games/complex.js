@@ -131,6 +131,12 @@ export default {
     // ---- enemies: puppeted ragdolls ----
     const enemyMat = std({ color: '#3a4047', roughness: 0.55, metalness: 0.3 }), jointMat = std({ color: '#c26a2a', roughness: 0.5 });
     const eyeMat = new THREE.MeshBasicMaterial({ color: '#ffb347', toneMapped: false });
+    const robotDetail = {
+      plate: new THREE.BoxGeometry(.17, .23, .025),
+      visor: new THREE.BoxGeometry(.15, .043, .022),
+      boot: new THREE.SphereGeometry(.065, 12, 8).scale(1, .7, 1.15),
+      shoulder: new THREE.SphereGeometry(.064, 10, 8),
+    };
     const PARTS = [
       ['torso', [0, 1.12, 0], [0.38, 0.46, 0.24], 8], ['head', [0, 1.58, 0], [0.26, 0.28, 0.26], 2], ['hip', [0, 0.78, 0], [0.3, 0.2, 0.22], 5],
       ['leftArm', [-0.3, 1.18, 0], [0.13, 0.34, 0.13], 1.5], ['rightArm', [0.3, 1.18, 0], [0.13, 0.34, 0.13], 1.5],
@@ -145,6 +151,18 @@ export default {
         const geo = name === 'head' ? new THREE.SphereGeometry(0.13, 16, 12) : new THREE.CapsuleGeometry(r, Math.max(0.02, size[1] - r * 2), 4, 12);
         const mesh = new THREE.Mesh(geo, name.endsWith('Hand') ? jointMat : enemyMat);
         if (name === 'torso' || name === 'hip') mesh.scale.x = size[0] / (r * 2);
+        if (name === 'torso') {
+          const plate = new THREE.Mesh(robotDetail.plate, jointMat); plate.position.set(0, .03, -.105); mesh.add(plate);
+        }
+        if (name === 'head') {
+          const visor = new THREE.Mesh(robotDetail.visor, jointMat); visor.position.set(0, .025, -.118); mesh.add(visor);
+        }
+        if (name.endsWith('Arm')) {
+          const shoulder = new THREE.Mesh(robotDetail.shoulder, jointMat); shoulder.position.y = .102; mesh.add(shoulder);
+        }
+        if (name.endsWith('Leg')) {
+          const boot = new THREE.Mesh(robotDetail.boot, enemyMat); boot.position.set(0, -.266, 0); mesh.add(boot);
+        }
         if (name === 'head') for (const s of [-1, 1]) { const eye = new THREE.Mesh(new THREE.SphereGeometry(0.022, 8, 6), eyeMat); eye.position.set(s * 0.05, 0.02, -0.115); mesh.add(eye); }
         mesh.position.set(x + at[0], floor + at[1], z + at[2]);
         const body = addBody(mesh, { size, mass, bounce: 0.04, friction: 0.9 }, 'enemy', { part: name, local: V(...at) });

@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "test": "node --test tests/*.test.js",
-    "server:network": "node server/network.mjs"
+    "server:network": "node server/network.mjs",
+    "dev": "node server/dev.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.0",

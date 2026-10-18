@@ -23,11 +23,13 @@ try {
     const game = window.__app.game, id = game.state.selectedBodyId;
     const before = game.state.bodies.find(body => body.id === id).mass;
     game.editSelected('mass-up'); game.update(0);
+    const trajectory = window.__app.root.getObjectByName('universe-trajectory');
     return { type: game.state.bodies.find(body => body.id === id).type,
       before, after: game.state.bodies.find(body => body.id === id).mass,
-      panel: game.state.selectedBodyId === id && !!window.__app.root.getObjectByName('universe-selection')?.visible };
+      panel: game.state.selectedBodyId === id && !!window.__app.root.getObjectByName('universe-selection')?.visible,
+      trajectory: trajectory?.visible && trajectory.geometry.drawRange.count > 2 };
   });
-  if (edited.type !== 'planet' || !(edited.after > edited.before) || !edited.panel) throw Error(JSON.stringify(edited));
+  if (edited.type !== 'planet' || !(edited.after > edited.before) || !edited.panel || !edited.trajectory) throw Error(JSON.stringify(edited));
   if (process.env.UNIVERSE_SCREENSHOT) await page.screenshot({ path: process.env.UNIVERSE_SCREENSHOT });
   const closePoint = await page.evaluate(() => {
     const app = window.__app;
