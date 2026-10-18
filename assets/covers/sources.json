@@ -26,6 +26,26 @@
     "cook",
     "tablegames",
     "physics",
-    "blocks"
+    "blocks",
+    "aura-chem",
+    "aura-aether",
+    "aura-chrono",
+    "aura-prismata",
+    "aura-void",
+    "aura-kinetix",
+    "aura-pulse",
+    "aura-spell",
+    "aura-shadow",
+    "aura-sling",
+    "aura-bio",
+    "aura-terra",
+    "aura-aero",
+    "aura-ruin",
+    "aura-neural",
+    "aura-zen",
+    "aura-atelier",
+    "aura-sound",
+    "aura-observ",
+    "aura-koi"
   ]
 }

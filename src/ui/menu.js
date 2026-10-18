@@ -8,6 +8,7 @@ import { T } from './theme.js';
 import { DEG } from '../core/util.js';
 import { fitText } from '../core/textures.js';
 import { OFFICIAL_GAMES } from '../media/officialGames.js';
+import { AURA_GAMES, auraUrl } from '../media/auraGames.js';
 import { APP_ART, CATEGORIES, gameCover, loadCatalogImage, drawCover } from './catalogArt.js';
 import { createSpaceDecor, paintSpacePanel } from './spaceDecor.js';
 
@@ -48,12 +49,13 @@ export class ArcMenu {
     ownTab.position.set(-0.145, 0.285, -R + 0.01); officialTab.position.set(0.145, 0.285, -R + 0.01);
     this.libraryTabs = [ownTab, officialTab]; lib.add(ownTab, officialTab);
     this.libraryPage = 0;
-    this.libraryPageCount = Math.ceil(GAMES.length / PAGE_SIZE);
+    const library = [...GAMES, ...AURA_GAMES];
+    this.libraryPageCount = Math.ceil(library.length / PAGE_SIZE);
     this.libraryTiles = [];
-    GAMES.forEach((g, i) => {
+    library.forEach((g, i) => {
       const page = Math.floor(i / PAGE_SIZE), index = i % PAGE_SIZE;
       const r = Math.floor(index / COLS), c = index % COLS;
-      const rowCount = Math.min(COLS, GAMES.length - page * PAGE_SIZE - r * COLS);
+      const rowCount = Math.min(COLS, library.length - page * PAGE_SIZE - r * COLS);
       const x = (c - (rowCount - 1) / 2) * step;
       const y = 0.155 - r * (tileH + 0.025);
       const tile = this._tile(g, tileW, tileH);
@@ -168,7 +170,7 @@ export class ArcMenu {
       for (const word of words) { const next = line ? line + ' ' + word : word; if (line && x.measureText(next).width > CW - 30) { lines.push(line); line = word; } else line = next; }
       lines.push(line);
       lines.slice(0, 2).forEach((text, i) => fitText(x, text, 14, IH + 20 + i * 24, CW - 28));
-      if (lines.length === 1) { x.font = `500 15px ${T.font}`; x.fillStyle = T.textDim; x.fillText(CATEGORIES[g.id] || 'BlueNav', 14, IH + 46); }
+      if (lines.length === 1) { x.font = `500 15px ${T.font}`; x.fillStyle = T.textDim; x.fillText(g.aura ? `AuraOS XR · ${g.category}` : CATEGORIES[g.id] || 'BlueNav', 14, IH + 46); }
       x.restore();
       if (hover) { x.strokeStyle = T.accent; x.lineWidth = 3; x.beginPath(); x.roundRect(2, 2, CW - 4, CH - 4, 18); x.stroke(); }
       tex.needsUpdate = true;
@@ -178,9 +180,14 @@ export class ArcMenu {
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: .02 })); inner.add(mesh);
     const outer = new THREE.Group(); outer.add(inner);
     outer.userData.cover = gameCover(g.id);
-    app.ui.add(mesh, { owner: 'ui', press: inner, label: g.name, onClick: () => app.loadGame(g.id),
+    app.ui.add(mesh, { owner: 'ui', press: inner, label: g.name, onClick: g.aura ? () => this.openAura(g) : () => app.loadGame(g.id),
       onHover: on => { hover = on; inner.scale.setScalar(on ? 1.025 : 1); draw(); } });
     return outer;
+  }
+
+  async openAura(g) {
+    await this.app.renderer.xr.getSession()?.end();
+    window.location.assign(auraUrl(g.exp));
   }
 
   _appTile(game) {

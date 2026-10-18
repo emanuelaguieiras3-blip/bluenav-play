@@ -28,9 +28,6 @@ try {
   await page.mouse.click(watch.x, watch.y);
   if (!await page.waitForFunction(() => window.__aura.Engine.state === 'hub', null, { timeout: 8000 }).then(() => true, () => false)) throw Error('clicking the wrist watch did not return to the hub');
   console.log('hub card click -> ChemHands, watch click -> hub: ok');
-  const directButtons = await page.evaluate(() => [...document.querySelectorAll('#b-games button')].map(b => b.dataset.exp));
-  if (directButtons.length !== 20) throw Error('expected 20 direct game buttons on the start screen, got ' + directButtons.length);
-  console.log('20 direct game buttons on start screen: ok');
   if (process.env.AURA_GEMINI) {
     await page.evaluate(() => window.__aura.Engine.load('chem'));
     await page.keyboard.press('g');

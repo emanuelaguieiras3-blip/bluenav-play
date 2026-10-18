@@ -23,10 +23,6 @@ canvas{display:block;touch-action:none}
 #help b{color:var(--fg)}
 #help[hidden],#boot[hidden]{display:none}
 #boot{overflow-y:auto}
-#boot h2{font-size:14px;letter-spacing:.08em;color:var(--dim);margin:18px 0 6px;font-weight:600}
-#b-games{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
-#b-games button{margin:0;padding:10px 12px;font-size:14px;text-align:left}
-#b-games button small{font-size:12px}
 </style>
 <script type="importmap">
 {
@@ -47,8 +43,6 @@ canvas{display:block;touch-action:none}
     <button id="b-desk">Modo Desktop<small>Rato e teclado, para testar sem óculos</small></button>
     <div class="status" id="b-status">A verificar suporte WebXR…</div>
     <div class="status" id="b-gemini">Gemini: a verificar…</div>
-    <h2>ENTRAR DIRETO NUM JOGO</h2>
-    <div id="b-games"></div>
   </div>
 </div>
 <div id="help" hidden><b>Rato:</b> mover = mão direita · clique = pinça · roda = profundidade da mão · botão direito arrastar = olhar · <b>Shift</b> = mão esquerda pinça no ponto atual · <b>E</b> = juntar as palmas · <b>R / F</b> = rodar o objeto agarrado · <b>G</b> = dica Gemini · <b>Esc</b> = Hub</div>
@@ -2541,7 +2535,16 @@ async function startXR(mode) {
     s.addEventListener('end', () => { Engine.isAR = false; sky.visible = true; boot.hidden = false; anchor.position.set(0, 0, 0); anchor.rotation.set(0, 0, 0); camera.position.set(0, 1.55, 0); });
   } catch (e) { bStatus.textContent = 'Não foi possível iniciar a sessão: ' + e.message; }
 }
-bVR.onclick = () => startXR('immersive-vr'); bAR.onclick = () => startXR('immersive-ar'); $('b-desk').onclick = startDesktop;
+const pendingExp = EXPERIENCES.find(e => e.id === new URLSearchParams(location.search).get('exp')) || null;
+const openPending = () => { if (pendingExp && Engine.state === 'hub') Engine.load(pendingExp.id); };
+bVR.onclick = () => startXR('immersive-vr').then(openPending); bAR.onclick = () => startXR('immersive-ar').then(openPending); $('b-desk').onclick = () => { startDesktop(); openPending(); };
+if (pendingExp) {
+  document.querySelector('#boot h1').textContent = pendingExp.icon + ' ' + pendingExp.title;
+  document.querySelector('#boot p').textContent = `${pendingExp.sub} · ${pendingExp.objective}`;
+  bVR.firstChild.textContent = 'Entrar em VR · ' + pendingExp.title;
+  // Quest Browser can hand an immersive session to the next page without a new tap.
+  navigator.xr?.addEventListener?.('sessiongranted', () => startXR(pendingExp.id === 'koi' ? 'immersive-ar' : 'immersive-vr').then(openPending));
+}
 if (navigator.xr) {
   Promise.all(['immersive-vr', 'immersive-ar'].map(m => navigator.xr.isSessionSupported(m).catch(() => false))).then(([vr, ar]) => {
     bVR.disabled = !vr; bAR.disabled = !ar;
@@ -2549,20 +2552,10 @@ if (navigator.xr) {
   });
 } else bStatus.textContent = 'WebXR indisponível neste browser · use o Modo Desktop (o WebXR exige HTTPS).';
 
-async function enterGame(id) {
-  const ar = id === 'koi' && !bAR.disabled, vr = !bVR.disabled;
-  if (ar || vr) { await startXR(ar ? 'immersive-ar' : 'immersive-vr'); if (renderer.xr.isPresenting) Engine.load(id); }
-  else { startDesktop(); Engine.load(id); }
-}
-EXPERIENCES.forEach(e => {
-  const b = document.createElement('button'); b.type = 'button'; b.dataset.exp = e.id;
-  b.innerHTML = `${e.icon} ${e.title}<small>${e.kind === 'game' ? 'Campanha ' + String(e.n).padStart(2, '0') : 'Lounge'} · ${e.sub}</small>`;
-  b.onclick = () => enterGame(e.id); $('b-games').appendChild(b);
-});
 GEMINI.init().then(ok => { $('b-gemini').textContent = ok ? 'Gemini ativo · use ✨ Dica Gemini (ou G) dentro dos jogos.' : 'Gemini indisponível neste servidor (sem chave configurada).'; });
 const qp = new URLSearchParams(location.search);
 if (qp.has('desk')) { startDesktop(); if (qp.get('exp')) Engine.load(qp.get('exp')); }
-window.__aura = { Engine, Hub, EXPERIENCES, hands, mouse, UI, HUD, Watch, settings, progress, FX, camera, THREE, GEMINI };
+window.__aura = { Engine, Hub, EXPERIENCES, hands, mouse, UI, HUD, Watch, settings, progress, FX, camera, THREE, GEMINI, HandVis, TUT };
 
 const clock = new THREE.Clock(); let T = 0;
 camera.rotation.order = 'YXZ';
