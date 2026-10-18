@@ -818,7 +818,14 @@ const Watch = {
       _m1.makeBasis(x, y, z); this.group.quaternion.setFromRotationMatrix(_m1);
       this.group.position.copy(L.wrist).addScaledVector(z, 0.028).addScaledVector(y, -0.035); this.group.scale.setScalar(1);
     } else {
-      this.group.visible = true; _v1.set(-0.27, -0.2, -0.45); camera.localToWorld(_v1); this.group.position.copy(_v1.applyMatrix4(anchorInv)); this.group.quaternion.copy(headQ); this.group.scale.setScalar(1.15);
+      this.group.visible = true;
+      if (CARD.on) {
+        // VR Box: a camera-locked watch can never sit under the centre reticle, so it floats
+        // low-left in the world and only follows when the head turns past ~50°; look at it to select it.
+        const yaw = Math.atan2(-headFwd.x, -headFwd.z), off = this.yaw == null ? 0 : wrapA(yaw - this.yaw); if (this.yaw == null) this.yaw = yaw; else if (Math.abs(off) > 0.9) this.yaw += (off - Math.sign(off) * 0.9) * Math.min(1, dt * 3);
+        _v1.set(-0.24, -0.42, -0.36).applyAxisAngle(YAXIS, this.yaw).add(head); this.group.position.lerp(_v1, this.placed ? Math.min(1, dt * 4) : 1); this.placed = true;
+        this.group.lookAt(headW); this.group.scale.setScalar(1.6);
+      } else { this.placed = false; _v1.set(-0.27, -0.2, -0.45); camera.localToWorld(_v1); this.group.position.copy(_v1.applyMatrix4(anchorInv)); this.group.quaternion.copy(headQ); this.group.scale.setScalar(1.15); }
     }
   }
 };
@@ -2530,6 +2537,7 @@ cv.addEventListener('pointerdown', e => {
     // VR Box: gaze aims, a tap (screen or headset trigger) pinches, double tap toggles the second hand, two fingers join the palms.
     CARD.touches.add(e.pointerId);
     if (CARD.touches.size >= 2) { mouse.palms = true; mouse.down = false; return; }
+    if (tapUI(e)) return;
     if (!orient.active && e.pointerType === 'mouse' && e.button === 2) { mouse.look = true; mouse.lx = e.clientX; mouse.ly = e.clientY; return; }
     const now = performance.now();
     if (now - CARD.lastTap < 320) { mouse.shift = !mouse.shift; if (mouse.shift) mouse.anchorPos.copy(hands.right.pinchPos); CARD.lastTap = 0; } else CARD.lastTap = now;
@@ -2539,6 +2547,14 @@ cv.addEventListener('pointerdown', e => {
   if (e.button === 2) { mouse.look = true; mouse.lx = e.clientX; mouse.ly = e.clientY; return; }
   if (e.button === 0) { mouse.down = true; mouse.click = true; }
 });
+// VR Box: a finger tapping a button drawn in either eye presses that button directly.
+function tapUI(e) {
+  const half = innerWidth / 2, x = e.clientX < half ? e.clientX / half : (e.clientX - half) / half;
+  raycaster.setFromCamera(_v4.set(x * 2 - 1, -(e.clientY / innerHeight) * 2 + 1, 0.5), camera);
+  const items = UI.items.filter(it => UI.visible(it.obj)), hit = raycaster.intersectObjects(items.map(it => it.hit), false)[0];
+  if (!hit) return false;
+  UI.press(hit.object.userData.ui, hands.right); CARD.item = hit.object.userData.ui; CARD.dwell = -1e9; mouse.uiLock = true; return true;
+}
 const pointerEnd = e => {
   if (CARD.on) { CARD.touches.delete(e.pointerId); if (!CARD.touches.size) mouse.palms = false; }
   if (e.button === 2) mouse.look = false;
