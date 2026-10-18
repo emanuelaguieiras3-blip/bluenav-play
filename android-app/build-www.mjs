@@ -22,7 +22,8 @@ fs.copyFileSync(path.join(three, 'LICENSE'), path.join(www, 'vendor/three/LICENS
 
 const mp = path.join(here, 'node_modules/@mediapipe/tasks-vision');
 fs.mkdirSync(path.join(www, 'vendor/mediapipe/tasks-vision'), { recursive: true });
-fs.copyFileSync(path.join(mp, 'vision_bundle.mjs'), path.join(www, 'vendor/mediapipe/tasks-vision/vision_bundle.mjs'));
+// The hand worker loads the .cjs build; the main-thread fallback imports the .mjs one.
+for (const file of ['vision_bundle.mjs', 'vision_bundle.cjs']) fs.copyFileSync(path.join(mp, file), path.join(www, 'vendor/mediapipe/tasks-vision', file));
 fs.cpSync(path.join(mp, 'wasm'), path.join(www, 'vendor/mediapipe/tasks-vision/wasm'), { recursive: true });
 const model = await fetch(MODEL_URL);
 if (!model.ok) throw new Error('hand model download failed: HTTP ' + model.status);

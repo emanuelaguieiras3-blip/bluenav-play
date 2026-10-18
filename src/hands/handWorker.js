@@ -24,9 +24,11 @@ self.onmessage = async (e) => {
         // confiança de rastreamento mais baixa: não perde a mão em movimento rápido (borrão)
         minHandDetectionConfidence: 0.5, minHandPresenceConfidence: 0.4, minTrackingConfidence: 0.35,
       });
+      // Some Android WebViews never finish creating the GPU delegate inside a worker: give it 6 s, then use the CPU.
       let delegate = 'GPU';
-      try { landmarker = await vision.HandLandmarker.createFromOptions(fileset, opts('GPU')); }
-      catch { delegate = 'CPU'; landmarker = await vision.HandLandmarker.createFromOptions(fileset, opts('CPU')); }
+      const gpu = vision.HandLandmarker.createFromOptions(fileset, opts('GPU'));
+      try { landmarker = await Promise.race([gpu, new Promise((_, reject) => setTimeout(() => reject(new Error('GPU lento')), 6000))]); }
+      catch { gpu.then(late => late.close(), () => {}); delegate = 'CPU'; landmarker = await vision.HandLandmarker.createFromOptions(fileset, opts('CPU')); }
       self.postMessage({ type: 'ready', delegate });
     } catch (err) {
       self.postMessage({ type: 'error', message: String((err && err.message) || err) });

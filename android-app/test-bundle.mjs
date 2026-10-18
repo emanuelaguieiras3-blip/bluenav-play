@@ -15,6 +15,15 @@ try {
   await page.goto(base + '/?auto=cardboard');
   await page.waitForFunction(() => window.__app?.game && !window.__app.loading, null, { timeout: 40000 });
   const tiles = await page.evaluate(() => window.__app.menu.libraryTiles.length);
+  // The real hand pipeline (camera -> worker -> MediaPipe), as in the APK: it must run in the worker, not the slow fallback.
+  const tracker = await page.evaluate(async () => {
+    const app = window.__app, t0 = performance.now(); await app.enableHands({ facing: 'environment', gemini: false });
+    const h = app.hands; return { mode: h?.mode, running: !!h?.running, status: h?.status, error: app.handError || null, readyMs: Math.round(performance.now() - t0) };
+  });
+  assert.equal(tracker.mode, 'worker', 'hand tracking fell back to the main thread: ' + JSON.stringify(tracker));
+  assert.equal(tracker.running, true, JSON.stringify(tracker));
+  const frames = await page.waitForFunction(() => window.__app.hands.detectMs > 0, null, { timeout: 15000 }).then(() => page.evaluate(() => Math.round(window.__app.hands.detectMs)), () => null);
+  assert.ok(frames != null, 'the worker never returned a detection result');
   await page.goto(base + '/auraos-xr.html?exp=chem&mode=cardboard');
   await page.waitForFunction(() => window.__aura?.Engine.cur?.id === 'chem' && window.__aura.CARD.on, null, { timeout: 30000 });
   const hands = await page.evaluate(async () => {
@@ -26,5 +35,5 @@ try {
   assert.equal(tiles, 46); assert.equal(hands, true);
   assert.deepEqual(external, [], 'bundle must not fetch from a CDN');
   assert.deepEqual(errors, []);
-  console.log(`bundle OK: BlueNav (${tiles} jogos na Biblioteca), AuraOS em VR Box e MediaPipe das mãos carregam sem CDN`);
+  console.log(`bundle OK: BlueNav (${tiles} jogos), mãos no worker em ${tracker.readyMs} ms (${frames} ms por quadro), AuraOS em VR Box, tudo sem CDN`);
 } finally { await browser.close(); }

@@ -66,8 +66,9 @@ export class HandTracker {
     const opts = delegate => ({ baseOptions: { modelAssetPath: MODEL, delegate }, runningMode: 'VIDEO', numHands: 2,
       minHandDetectionConfidence: 0.5, minHandPresenceConfidence: 0.4, minTrackingConfidence: 0.35 });
     let model;
-    try { model = await vision.HandLandmarker.createFromOptions(fileset, opts('GPU')); }
-    catch { model = await vision.HandLandmarker.createFromOptions(fileset, opts('CPU')); }
+    const gpu = vision.HandLandmarker.createFromOptions(fileset, opts('GPU'));
+    try { model = await Promise.race([gpu, new Promise((_, reject) => setTimeout(() => reject(new Error('GPU lento')), 6000))]); }
+    catch { gpu.then(late => late.close(), () => {}); model = await vision.HandLandmarker.createFromOptions(fileset, opts('CPU')); }
     if (!this.running && this.mode === 'recovering') model.close();
     else this.landmarker = model;
   }
