@@ -9,8 +9,11 @@ const here = import.meta.dirname, root = path.resolve(here, '..'), www = path.jo
 const MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
 
 fs.rmSync(www, { recursive: true, force: true }); fs.mkdirSync(www);
+// Android WebView always takes the WebP versions of these Véspera atlases, so their PNG fallbacks stay out.
+const webpOnly = new Set(['class-portraits.png', 'bosses-v2.png', 'mystics-v2.png'].map(f => path.join(root, 'vespera-rpg2/assets', f)));
+const keep = src => !webpOnly.has(src) && !/\.map$/i.test(src) && (!/\.(md|txt)$/i.test(src) || /LICENSE/i.test(src));
 for (const item of ['index.html', 'auraos-xr.html', 'style.css', 'config.js', 'src', 'assets', 'vespera-rpg2']) {
-  fs.cpSync(path.join(root, item), path.join(www, item), { recursive: true, filter: src => !/\.(md|txt)$/i.test(src) || /LICENSE/i.test(src) });
+  fs.cpSync(path.join(root, item), path.join(www, item), { recursive: true, filter: keep });
 }
 
 const three = path.join(root, 'node_modules/three');

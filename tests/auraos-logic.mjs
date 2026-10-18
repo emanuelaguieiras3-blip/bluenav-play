@@ -12,6 +12,8 @@ const page = await context.newPage(), errors = [], fails = [];
 page.on('pageerror', e => errors.push(e.message));
 const check = (ok, msg) => { console.log((ok ? 'PASS ' : 'FAIL ') + msg); if (!ok) fails.push(msg); };
 const load = async id => { await page.evaluate(id => window.__aura.Engine.load(id), id); await page.waitForTimeout(300); };
+// Advance the current module by fixed time steps, independent of the machine's frame rate.
+const advance = seconds => page.evaluate(seconds => { const e = window.__aura.Engine; for (let t = 0; t < seconds && e.inst?.update; t += 1 / 30) { e.ctx.t += 1 / 30; e.inst.update(1 / 30, e.ctx.t); } }, seconds);
 const waitFor = (fn, ms) => page.waitForFunction(fn, null, { timeout: ms }).then(() => true, () => false);
 try {
   await page.goto(base + '?desk=1');
@@ -52,10 +54,11 @@ try {
   for (const [a, m, stage] of [[0.02, 0.04, 1], [0.08, 0.06, 2], [0.127, 0, 3]]) {
     await page.evaluate(([a, m]) => window.__aura.Engine.inst.api.set(a, m), [a, m]);
     const st = await page.evaluate(() => window.__aura.Engine.inst.api.state);
+    await advance(3);
     const ok = await page.waitForFunction(s => window.__aura.Engine.ctx.done || window.__aura.HUD.st.extra?.startsWith(['', 'Descolagem', 'Planador', ''][s]), stage, { timeout: 20000 }).then(() => true, () => false);
     check(ok, `aero regime ${stage} (CL ${st.CL.toFixed(2)}, L/D ${st.LD.toFixed(0)})`);
   }
-  check(await waitFor(() => window.__aura.Engine.ctx.done && window.__aura.HUD.st.result?.ok, 10000), 'aero completes after 3 regimes');
+  check(await page.evaluate(() => window.__aura.Engine.ctx.done && window.__aura.HUD.st.result?.ok), 'aero completes after 3 regimes');
   await page.evaluate(() => window.__aura.Engine.inst.api.set(0.08, 0.06)); check((await page.evaluate(() => window.__aura.Engine.inst.api.state.LD)) < 54, 'aero takeoff setting does not satisfy glider regime');
 
   // ShadowWire: aligning the coupled rings unlocks the core.
@@ -75,7 +78,7 @@ try {
     return { before, after: api.path()?.map(n => n.i) };
   });
   check(net.before.includes(5) && net.after && !net.after.includes(5), `neuralnet reroute ${JSON.stringify(net)}`);
-  const iso = await waitFor(() => !window.__aura.Engine.inst.api.N[5].inf, 15000);
+  await advance(6.5); const iso = await page.evaluate(() => !window.__aura.Engine.inst.api.N[5].inf);
   check(iso, 'neuralnet isolated virus is cleared');
 
   if (errors.length) fails.push(...errors);
