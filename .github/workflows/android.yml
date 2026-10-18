@@ -27,10 +27,15 @@ jobs:
       - name: Licenças do Android SDK
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
 
+      # three.js vem das dependências da raiz; o MediaPipe e o modelo das mãos entram em www/vendor
+      - name: Dependências do site
+        run: npm ci
+
       - name: Gerar projeto Android (Capacitor)
         working-directory: android-app
         run: |
           npm install
+          node build-www.mjs
           npx cap add android
           node patch-android.mjs
           npx cap sync android
@@ -51,4 +56,5 @@ jobs:
           body: |
             Baixe o **BlueNav-Play.apk** abaixo e abra no celular Android.
             Se o Android avisar, permita "instalar apps desconhecidos" para o navegador/arquivos.
-            O app abre https://bluenav-play.vercel.app (precisa de internet) e pede permissão de câmera.
+            O app já traz o BlueNav, os 20 jogos AuraOS XR e o Véspera; jogos e rastreamento das mãos funcionam sem internet.
+            O Gemini, o YouTube e as salas online continuam a precisar de internet. O app pede permissão de câmera.

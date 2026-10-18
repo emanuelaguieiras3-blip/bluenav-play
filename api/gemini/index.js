@@ -1,11 +1,13 @@
-import { MODELS, key, forward } from './_proxy.js';
+import { MODELS, key, forward, cors } from './_proxy.js';
 
 export default async function handler(req, res) {
   res.setHeader('cache-control', 'no-store');
+  const appOrigin = cors(req, res);
+  if (req.method === 'OPTIONS') return res.status(appOrigin ? 204 : 403).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Método não permitido.' });
   if (!key()) return res.status(503).json({ error: 'Gemini não configurado.' });
   const origin = req.headers.origin;
-  if (origin && new URL(origin).host !== req.headers.host) return res.status(403).json({ error: 'Origem recusada.' });
+  if (origin && !appOrigin && new URL(origin).host !== req.headers.host) return res.status(403).json({ error: 'Origem recusada.' });
   const model = req.query.model || MODELS[0];
   if (!MODELS.includes(model)) return res.status(400).json({ error: 'Modelo inválido.' });
   const body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body ?? {});

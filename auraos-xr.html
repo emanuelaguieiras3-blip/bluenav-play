@@ -677,11 +677,12 @@ function makeButton(label, o = {}) {
 function faceTo(obj, target) { obj.rotation.order = 'YXZ'; obj.rotation.y = Math.atan2(target.x - obj.position.x, target.z - obj.position.z); }
 
 /* ===================== GEMINI (via proxy do servidor; a chave nunca chega ao browser) ===================== */
+const API_BASE = window.Capacitor && location.hostname === 'localhost' ? 'https://bluenav-play.vercel.app' : '';
 const GEMINI = {
   available: false, busy: false,
-  async init() { try { const r = await fetch('/api/gemini/status', { cache: 'no-store' }); this.available = r.ok && !!(await r.json()).available; } catch { this.available = false; } return this.available; },
+  async init() { try { const r = await fetch(API_BASE + '/api/gemini/status', { cache: 'no-store' }); this.available = r.ok && !!(await r.json()).available; } catch { this.available = false; } return this.available; },
   async ask(prompt) {
-    const r = await fetch('/api/gemini', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.6, maxOutputTokens: 200 } }) });
+    const r = await fetch(API_BASE + '/api/gemini', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.6, maxOutputTokens: 200 } }) });
     const j = await r.json().catch(() => ({})); if (!r.ok) throw Error(j.error?.message || j.error || 'HTTP ' + r.status);
     const t = j.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('').trim(); if (!t) throw Error('resposta vazia'); return t;
   },

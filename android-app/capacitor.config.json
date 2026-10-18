@@ -3,7 +3,6 @@
   "appName": "BlueNav Play",
   "webDir": "www",
   "server": {
-    "url": "https://bluenav-play.vercel.app",
     "androidScheme": "https"
   },
   "android": {

@@ -1,11 +1,12 @@
 // MediaPipe Hands (21 pontos por mão) via câmera do celular, carregado só quando necessário.
-import { CONFIG } from '../../config.js';
+import { CONFIG, BUNDLED } from '../../config.js';
 import { HandCorrector } from './handCorrector.js';
 import { GeminiAssist } from './geminiAssist.js';
 import { getCamera } from '../core/cameraFeed.js';
 
-const MP = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${CONFIG.MEDIAPIPE_VERSION}`;
-const MODEL = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
+// The Android app ships MediaPipe and the hand model in /vendor so hand tracking works offline.
+const MP = BUNDLED ? new URL('/vendor/mediapipe/tasks-vision', location.href).href : `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${CONFIG.MEDIAPIPE_VERSION}`;
+const MODEL = BUNDLED ? new URL('/vendor/mediapipe/hand_landmarker.task', location.href).href : 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
 const HFOV = CONFIG.CAMERA_HFOV * Math.PI / 180; // campo de visão horizontal da câmera do celular
 
 export class HandTracker {

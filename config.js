@@ -3,6 +3,11 @@
 // - YouTube: restrinja a chave por "HTTP referrer" (seu domínio) no Google Cloud Console.
 // - Gemini: chave no navegador pode ser copiada. Use um proxy (ex.: Cloudflare Worker)
 //   em GEMINI_PROXY_URL se for publicar o site.
+// Inside the Android app (Capacitor serves the bundled files from https://localhost)
+// the Gemini proxy lives on the published site; the key never ships in the APK.
+export const BUNDLED = typeof window !== 'undefined' && !!window.Capacitor && location.hostname === 'localhost';
+export const API_BASE = BUNDLED ? 'https://bluenav-play.vercel.app' : '';
+
 export const CONFIG = {
   NETWORK_URL: '', // wss://seu-servidor/room (vazio: usuário informa no painel)
   YOUTUBE_API_KEY: 'AIzaSyDSXIOjEANDneoIrngoc2jhQ72otNPBg3s',

@@ -2,10 +2,14 @@
   "name": "bluenav-play-android",
   "private": true,
   "version": "1.0.0",
-  "description": "App Android do BlueNav Play (Capacitor). Abre o site publicado com permissão de câmera.",
+  "description": "App Android do BlueNav Play (Capacitor). Leva o BlueNav, o AuraOS XR e o Véspera dentro do APK; o Gemini usa o proxy do site publicado.",
   "dependencies": {
     "@capacitor/android": "^8.5.3",
     "@capacitor/cli": "^8.5.3",
-    "@capacitor/core": "^8.5.3"
+    "@capacitor/core": "^8.5.3",
+    "@mediapipe/tasks-vision": "0.10.14"
+  },
+  "scripts": {
+    "build:www": "node build-www.mjs"
   }
 }

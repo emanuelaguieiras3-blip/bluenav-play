@@ -1,5 +1,5 @@
 import { App } from './app.js';
-import { CONFIG } from '../config.js';
+import { CONFIG, API_BASE } from '../config.js';
 import { releaseCamera } from './core/cameraFeed.js';
 
 const $ = (id) => document.getElementById(id);
@@ -48,9 +48,9 @@ $('camera-test').addEventListener('click', testCamera);
 $('camera-facing').addEventListener('change', () => { if (previewTracker) stopPreview(true); });
 $('camera-setup').addEventListener('toggle', () => { if (!$('camera-setup').open && previewTracker) stopPreview(true); });
 // The site's own server holds the Gemini key; when it does, the key field is not needed.
-const geminiServer = fetch('/api/gemini/status', { cache: 'no-store' }).then(response => response.ok ? response.json() : null).then(info => {
+const geminiServer = fetch(API_BASE + '/api/gemini/status', { cache: 'no-store' }).then(response => response.ok ? response.json() : null).then(info => {
   if (!info?.available || CONFIG.GEMINI_API_KEY) return false;
-  CONFIG.GEMINI_PROXY_URL = '/api/gemini';
+  CONFIG.GEMINI_PROXY_URL = API_BASE + '/api/gemini';
   $('gemini-setup').hidden = true;
   $('gemini-status').textContent = 'Gemini integrado no servidor.';
   $('chk-gemini').parentElement.lastChild.textContent = ' Calibrar mãos da câmera com Gemini (integrado)';
