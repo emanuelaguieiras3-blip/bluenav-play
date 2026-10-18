@@ -186,8 +186,9 @@ export class ArcMenu {
   }
 
   async openAura(g) {
+    const mode = this.app.mode;
     await this.app.renderer.xr.getSession()?.end();
-    window.location.assign(auraUrl(g.exp));
+    window.location.assign(auraUrl(g.exp, mode));
   }
 
   _appTile(game) {

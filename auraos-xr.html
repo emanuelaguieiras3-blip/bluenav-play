@@ -21,7 +21,8 @@ canvas{display:block;touch-action:none}
 #boot .status{font-size:13px;color:var(--dim);margin-top:12px;min-height:1.2em}
 #help{position:fixed;left:16px;right:16px;bottom:14px;margin:auto;max-width:900px;padding:10px 14px;border-radius:14px;background:rgba(6,10,24,.72);border:1px solid var(--line);font-size:12.5px;color:var(--dim);line-height:1.5;z-index:4;pointer-events:none}
 #help b{color:var(--fg)}
-#help[hidden],#boot[hidden]{display:none}
+#help[hidden],#boot[hidden],#divider[hidden]{display:none}
+#divider{position:fixed;left:50%;top:0;bottom:0;width:3px;margin-left:-1px;background:#000;z-index:3;pointer-events:none}
 #boot{overflow-y:auto}
 </style>
 <script type="importmap">
@@ -40,11 +41,13 @@ canvas{display:block;touch-action:none}
     <p>Biblioteca Espacial · 15 jogos da campanha <i>A Reconstrução da Realidade</i> e 5 experiências Lounge, com Hand Tracking nativo, áudio espacial e pós-processamento.</p>
     <button id="b-vr" class="primary" disabled>Entrar em VR<small>Meta Quest · mãos ou comandos</small></button>
     <button id="b-ar" disabled>Entrar em AR · Passthrough<small>Realidade mista (ideal para a Lagoa Koi)</small></button>
+    <button id="b-card">VR no celular · VR Box<small>Ecrã dividido e giroscópio · olhar para mirar, tocar para pinçar</small></button>
     <button id="b-desk">Modo Desktop<small>Rato e teclado, para testar sem óculos</small></button>
     <div class="status" id="b-status">A verificar suporte WebXR…</div>
     <div class="status" id="b-gemini">Gemini: a verificar…</div>
   </div>
 </div>
+<div id="divider" hidden></div>
 <div id="help" hidden><b>Rato:</b> mover = mão direita · clique = pinça · roda = profundidade da mão · botão direito arrastar = olhar · <b>Shift</b> = mão esquerda pinça no ponto atual · <b>E</b> = juntar as palmas · <b>R / F</b> = rodar o objeto agarrado · <b>G</b> = dica Gemini · <b>Esc</b> = Hub</div>
 <script type="module">
 import * as THREE from 'three';
@@ -54,6 +57,8 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+import { OrientationControls } from './src/core/orientation.js';
+import { StereoRenderer } from './src/core/stereo.js';
 
 /* ===================== FUNDAÇÕES ===================== */
 const V3 = THREE.Vector3, Q4 = THREE.Quaternion, C3 = THREE.Color;
@@ -580,17 +585,20 @@ const HandVis = {
       const dot = new THREE.Mesh(new THREE.IcosahedronGeometry(0.005, 2), MAT.glow(col)); anchor.add(dot);
       this.sides[side] = { inst, jm, ghost, cursor, ray, dot };
     }
+    this.reticle = new THREE.Mesh(new THREE.TorusGeometry(0.007, 0.0014, 8, 40), MAT.glow(0xffffff, 0.95)); this.reticle.renderOrder = 20; this.reticle.material.depthTest = false; anchor.add(this.reticle);
   },
   setTheme(c) { for (const s of Object.values(this.sides)) { s.jm.emissive.set(c); s.jm.userData.rim.value.set(c); s.ghost.setColor(c); s.cursor.material.color.set(c); s.ray.material.color.set(c); s.dot.material.color.set(c); } TUT.hands.forEach(h => h.setColor(c)); },
   update() {
+    const R = hands.right, ret = this.reticle; ret.visible = CARD.on && R.active;
+    if (ret.visible) { ret.position.copy(R.rayHit ? R.rayHitPos : R.pinchPos); ret.quaternion.copy(headQ); const k = CARD.item ? clamp(CARD.dwell / 0.9, 0, 1) : 0; ret.scale.setScalar((R.pinch ? 0.6 : 1) * (1 + k * 1.6) * Math.max(0.6, ret.position.distanceTo(head) / 0.55)); ret.material.color.set(R.pinch ? themeColor() : CARD.item ? 0xffd27a : 0xffffff); }
     for (const H of HANDS) {
       const v = this.sides[H.side];
       v.inst.visible = H.active && H.src === 'hand';
       if (v.inst.visible) { for (let k = 0; k < JN.length; k++) { const r = H.jr[k] * (k === JI.iTip || k === JI.tTip ? 1.15 : 0.95); _m1.compose(H.joints[k], _q1.identity(), _v1.set(r, r, r)); v.inst.setMatrixAt(k, _m1); } v.inst.instanceMatrix.needsUpdate = true; }
-      const ghostOn = H.active && (H.src === 'ctrl' || H.src === 'mouse');
+      const ghostOn = H.active && (H.src === 'ctrl' || H.src === 'mouse') && !CARD.on;
       v.ghost.setOpacity(ghostOn ? 0.42 : 0);
       if (ghostOn) { v.ghost.setPinch(H.pinch ? 1 : (H.src === 'ctrl' ? 0.2 : 0.1)); v.ghost.place(H.pinchPos, H.src === 'mouse' ? _q2.copy(headQ).multiply(H.side === 'right' ? this.tiltR : this.tiltL) : H.rot); }
-      v.cursor.visible = H.active; if (H.active) { v.cursor.position.copy(H.pinchPos); v.cursor.quaternion.copy(headQ); const s = H.pinch ? 0.55 : 1 + clamp((H.pinchDist - 0.02) * 10, 0, 0.6); v.cursor.scale.setScalar(s); }
+      v.cursor.visible = H.active && !CARD.on; if (v.cursor.visible) { v.cursor.position.copy(H.pinchPos); v.cursor.quaternion.copy(headQ); const s = H.pinch ? 0.55 : 1 + clamp((H.pinchDist - 0.02) * 10, 0, 0.6); v.cursor.scale.setScalar(s); }
       const showRay = H.active && H.src !== 'mouse' && (H.rayHit || (Engine.state === 'hub' && !H.nearUI));
       v.ray.visible = showRay; v.dot.visible = showRay && !!H.rayHit;
       if (showRay) {
@@ -623,6 +631,7 @@ const UI = {
       }
     }
     const xr = renderer.xr.isPresenting, hub = Engine.state === 'hub';
+    let gazeSeen = false;
     for (const H of HANDS) {
       if (!H.active || H.nearUI || (H.src === 'mouse' && H.side === 'left')) continue;
       const list = vis.filter(it => H.src !== 'hand' || hub || it.far).map(it => it.hit); if (!list.length) continue;
@@ -631,10 +640,12 @@ const UI = {
       if (hit) {
         const it = hit.object.userData.ui; it.tHover = Math.max(it.tHover, 0.8); H.rayHit = it; H.rayHitPos = (H.rayHitPos || new V3()).copy(hit.point).applyMatrix4(anchorInv);
         if (H.src === 'mouse') {
+          if (CARD.on) { gazeSeen = true; if (CARD.item === it) { if ((CARD.dwell += dt) > 0.9) { CARD.dwell = -1e9; this.press(it, H); } } else { CARD.item = it; CARD.dwell = 0; } }
           if (mouse.click) { const bl = Engine.root ? this.rc.intersectObjects(this.blockers(Engine.root), false)[0] : null; if (!bl || bl.distance > hit.distance) { mouse.click = false; mouse.uiLock = mouse.down; H.pinch = false; H.pinchDown = false; this.press(it, H); } }
         } else if (H.pinchDown && !H.consumed) { H.consumed = true; this.press(it, H); }
       }
     }
+    if (!gazeSeen) { CARD.item = null; CARD.dwell = 0; }
     if (mouse.click && !xr) {
       mouse.click = false;
       if (Engine.root && Engine.cur?.autoDepth !== false) { _v1.copy(hands.right.rayO).applyMatrix4(anchor.matrixWorld); _v2.copy(hands.right.rayD).applyQuaternion(anchor.quaternion); this.rc.set(_v1, _v2); this.rc.far = 3.5;
@@ -891,6 +902,7 @@ const Engine = {
     else AUDIO.chord([311.13, 233.08, 185], { arp: 0.12, g: 0.07, type: 'triangle' });
   },
   recenter() {
+    if (CARD.on) { orient.recenter(); return; }
     if (!renderer.xr.isPresenting) return; const xc = renderer.xr.getCamera(); xc.getWorldPosition(_v1); xc.getWorldDirection(_v2);
     anchor.position.set(_v1.x, clamp(_v1.y - 1.55, -0.7, 0.35), _v1.z); anchor.rotation.set(0, Math.atan2(-_v2.x, -_v2.z), 0); anchor.updateMatrixWorld();
   },
@@ -2503,16 +2515,36 @@ HandVis.build(); HUD.build(); TUT.build(); Watch.build(); Hub.build(); Engine.st
 const $ = id => document.getElementById(id), boot = $('boot'), help = $('help'), bVR = $('b-vr'), bAR = $('b-ar'), bStatus = $('b-status');
 const cv = renderer.domElement;
 cv.addEventListener('contextmenu', e => e.preventDefault());
+const orient = new OrientationControls(camera), stereo = new StereoRenderer(renderer);
+const CARD = { on: false, item: null, dwell: 0, lastTap: 0, touches: new Set() };
+const fitView = () => { camera.aspect = CARD.on ? (innerWidth / 2) / innerHeight : innerWidth / innerHeight; camera.fov = CARD.on ? 85 : 70; camera.updateProjectionMatrix(); };
+addEventListener('resize', fitView);
 cv.addEventListener('pointermove', e => {
-  mouse.ndc.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  if (CARD.on && orient.active) return;
+  if (!CARD.on) mouse.ndc.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
   if (mouse.look) { mouse.yaw -= (e.clientX - mouse.lx) * 0.004; mouse.pitch = clamp(mouse.pitch - (e.clientY - mouse.ly) * 0.004, -1.3, 1.3); mouse.lx = e.clientX; mouse.ly = e.clientY; }
 });
 cv.addEventListener('pointerdown', e => {
-  AUDIO.init(); mouse.ndc.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  AUDIO.init();
+  if (CARD.on) {
+    // VR Box: gaze aims, a tap (screen or headset trigger) pinches, double tap toggles the second hand, two fingers join the palms.
+    CARD.touches.add(e.pointerId);
+    if (CARD.touches.size >= 2) { mouse.palms = true; mouse.down = false; return; }
+    if (!orient.active && e.pointerType === 'mouse' && e.button === 2) { mouse.look = true; mouse.lx = e.clientX; mouse.ly = e.clientY; return; }
+    const now = performance.now();
+    if (now - CARD.lastTap < 320) { mouse.shift = !mouse.shift; if (mouse.shift) mouse.anchorPos.copy(hands.right.pinchPos); CARD.lastTap = 0; } else CARD.lastTap = now;
+    mouse.down = true; mouse.click = true; return;
+  }
+  mouse.ndc.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
   if (e.button === 2) { mouse.look = true; mouse.lx = e.clientX; mouse.ly = e.clientY; return; }
   if (e.button === 0) { mouse.down = true; mouse.click = true; }
 });
-addEventListener('pointerup', e => { if (e.button === 2) mouse.look = false; if (e.button === 0) { mouse.down = false; mouse.uiLock = false; } });
+const pointerEnd = e => {
+  if (CARD.on) { CARD.touches.delete(e.pointerId); if (!CARD.touches.size) mouse.palms = false; }
+  if (e.button === 2) mouse.look = false;
+  if (e.button === 0 || CARD.on) { mouse.down = false; mouse.uiLock = false; }
+};
+addEventListener('pointerup', pointerEnd); addEventListener('pointercancel', pointerEnd);
 cv.addEventListener('wheel', e => { mouse.depth = clamp(mouse.depth - e.deltaY * 0.0006, 0.2, 3.5); e.preventDefault(); }, { passive: false });
 addEventListener('keydown', e => {
   if (e.repeat) return; const k = e.key.toLowerCase(); mouse.keys.add(k);
@@ -2521,10 +2553,23 @@ addEventListener('keydown', e => {
   if (k === 'g') GEMINI.hint();
   if (e.key === 'Escape' && Engine.state === 'exp') Engine.toHub();
 });
-addEventListener('keyup', e => { const k = e.key.toLowerCase(); mouse.keys.delete(k); if (e.key === 'Shift') mouse.shift = false; if (k === 'e') mouse.palms = false; });
+addEventListener('keyup', e => { const k = e.key.toLowerCase(); mouse.keys.delete(k); if (e.key === 'Shift' && !CARD.on) mouse.shift = false; if (k === 'e') mouse.palms = false; });
 addEventListener('blur', () => { mouse.keys.clear(); mouse.shift = mouse.palms = mouse.down = mouse.look = false; });
 
 function startDesktop() { AUDIO.init(); boot.hidden = true; help.hidden = false; }
+async function startCardboard() {
+  AUDIO.init(); CARD.on = true; boot.hidden = true; help.hidden = true; $('divider').hidden = false; mouse.ndc.set(0, 0); mouse.pitch = 0; fitView();
+  orient.connect();
+  // Fullscreen, landscape lock and iOS motion permission need a user gesture: the first tap grants them.
+  const gesture = async () => {
+    try { await document.documentElement.requestFullscreen?.(); } catch { }
+    try { await screen.orientation?.lock?.('landscape'); } catch { }
+    if (!orient.active) await orient.connect();
+    try { await navigator.wakeLock?.request('screen'); } catch { }
+    orient.recenter(); fitView();
+  };
+  gesture(); addEventListener('pointerdown', gesture, { once: true });
+}
 async function startXR(mode) {
   AUDIO.init();
   try {
@@ -2535,9 +2580,10 @@ async function startXR(mode) {
     s.addEventListener('end', () => { Engine.isAR = false; sky.visible = true; boot.hidden = false; anchor.position.set(0, 0, 0); anchor.rotation.set(0, 0, 0); camera.position.set(0, 1.55, 0); });
   } catch (e) { bStatus.textContent = 'Não foi possível iniciar a sessão: ' + e.message; }
 }
-const pendingExp = EXPERIENCES.find(e => e.id === new URLSearchParams(location.search).get('exp')) || null;
+const qp = new URLSearchParams(location.search), pendingExp = EXPERIENCES.find(e => e.id === qp.get('exp')) || null, launchMode = qp.get('mode');
 const openPending = () => { if (pendingExp && Engine.state === 'hub') Engine.load(pendingExp.id); };
-bVR.onclick = () => startXR('immersive-vr').then(openPending); bAR.onclick = () => startXR('immersive-ar').then(openPending); $('b-desk').onclick = () => { startDesktop(); openPending(); };
+bVR.onclick = () => startXR('immersive-vr').then(openPending); bAR.onclick = () => startXR('immersive-ar').then(openPending);
+$('b-desk').onclick = () => { startDesktop(); openPending(); }; $('b-card').onclick = () => { startCardboard(); openPending(); };
 if (pendingExp) {
   document.querySelector('#boot h1').textContent = pendingExp.icon + ' ' + pendingExp.title;
   document.querySelector('#boot p').textContent = `${pendingExp.sub} · ${pendingExp.objective}`;
@@ -2545,6 +2591,9 @@ if (pendingExp) {
   // Quest Browser can hand an immersive session to the next page without a new tap.
   navigator.xr?.addEventListener?.('sessiongranted', () => startXR(pendingExp.id === 'koi' ? 'immersive-ar' : 'immersive-vr').then(openPending));
 }
+// Opened from the BlueNav library: continue in the same mode, without the start screen.
+if (launchMode === 'cardboard') { startCardboard(); openPending(); }
+else if (launchMode === 'flat') { startDesktop(); openPending(); }
 if (navigator.xr) {
   Promise.all(['immersive-vr', 'immersive-ar'].map(m => navigator.xr.isSessionSupported(m).catch(() => false))).then(([vr, ar]) => {
     bVR.disabled = !vr; bAR.disabled = !ar;
@@ -2553,21 +2602,23 @@ if (navigator.xr) {
 } else bStatus.textContent = 'WebXR indisponível neste browser · use o Modo Desktop (o WebXR exige HTTPS).';
 
 GEMINI.init().then(ok => { $('b-gemini').textContent = ok ? 'Gemini ativo · use ✨ Dica Gemini (ou G) dentro dos jogos.' : 'Gemini indisponível neste servidor (sem chave configurada).'; });
-const qp = new URLSearchParams(location.search);
 if (qp.has('desk')) { startDesktop(); if (qp.get('exp')) Engine.load(qp.get('exp')); }
-window.__aura = { Engine, Hub, EXPERIENCES, hands, mouse, UI, HUD, Watch, settings, progress, FX, camera, THREE, GEMINI, HandVis, TUT };
+if (qp.has('card') && !CARD.on) { startCardboard(); if (qp.get('exp')) Engine.load(qp.get('exp')); }
+window.__aura = { Engine, Hub, EXPERIENCES, hands, mouse, UI, HUD, Watch, settings, progress, FX, camera, THREE, GEMINI, HandVis, TUT, CARD, orient };
 
 const clock = new THREE.Clock(); let T = 0;
 camera.rotation.order = 'YXZ';
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.05); T += dt;
-  if (!renderer.xr.isPresenting) { if (mouse.keys.has('r')) mouse.rotY += dt * 1.6; if (mouse.keys.has('f')) mouse.rotY -= dt * 1.6; camera.rotation.set(mouse.pitch, mouse.yaw, 0); camera.updateMatrixWorld(); }
+  if (CARD.on) { mouse.ndc.set(0, 0); if (!orient.update()) camera.rotation.set(mouse.pitch, mouse.yaw, 0); camera.updateMatrixWorld(); }
+  else if (!renderer.xr.isPresenting) { if (mouse.keys.has('r')) mouse.rotY += dt * 1.6; if (mouse.keys.has('f')) mouse.rotY -= dt * 1.6; camera.rotation.set(mouse.pitch, mouse.yaw, 0); camera.updateMatrixWorld(); }
   else if (Engine.needsRecenter > 0 && --Engine.needsRecenter === 0) Engine.recenter();
   sky.material.uniforms.uT.value = T;
   updateHands(dt); UI.update(dt);
   if (Engine.state === 'hub') Hub.update(dt, T); else Engine.update(dt);
   Watch.update(dt); TUT.update(dt); FX.update(dt); HUD.update(dt); HandVis.update(); AUDIO.updateListener();
-  if (renderer.xr.isPresenting || !settings.bloom) renderer.render(scene, camera); else composer.render(dt);
+  if (CARD.on) stereo.render(scene, camera);
+  else if (renderer.xr.isPresenting || !settings.bloom) renderer.render(scene, camera); else composer.render(dt);
 });
 </script>
 </body>

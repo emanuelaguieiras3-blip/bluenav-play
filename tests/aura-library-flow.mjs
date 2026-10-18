@@ -4,8 +4,8 @@ import path from 'node:path';
 
 // The BlueNav library lists the 20 AuraOS XR modules; picking one opens auraos-xr.html on that module.
 const base = process.env.BLUENAV_URL || 'http://127.0.0.1:8084/';
-const browser = await chromium.launch({ headless: true, args: ['--enable-unsafe-swiftshader', '--use-angle=swiftshader'] });
-const context = await browser.newContext({ viewport: { width: 1200, height: 750 } });
+const browser = await chromium.launch({ headless: true, args: ['--enable-unsafe-swiftshader', '--use-angle=swiftshader', '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'] });
+const context = await browser.newContext({ viewport: { width: 1200, height: 750 }, permissions: ['camera'] });
 await context.route('https://cdn.jsdelivr.net/npm/three@0.160.0/**', async route => {
   await route.fulfill({ body: await readFile(path.resolve('node_modules/three', route.request().url().split('/three@0.160.0/')[1])), contentType: 'text/javascript' });
 });
@@ -19,13 +19,21 @@ try {
   if (info.aura !== 20) throw Error('expected 20 AuraOS tiles in the library: ' + JSON.stringify(info));
   await page.screenshot({ path: 'artifacts/aura-library/page4.png' });
   // In flat mode BlueNav selects by gaze dwell, so the centred AuraOS tile opens through the real UI path.
-  await page.waitForURL(/auraos-xr\.html\?exp=[a-z]+&from=bluenav/, { timeout: 20000 });
+  await page.waitForURL(/auraos-xr\.html\?exp=[a-z]+&from=bluenav&mode=flat/, { timeout: 20000 });
   const exp = new URL(page.url()).searchParams.get('exp');
-  await page.waitForFunction(() => window.__aura?.EXPERIENCES, null, { timeout: 30000 });
-  const boot = await page.evaluate(id => ({ title: document.querySelector('#boot h1').textContent, want: window.__aura.EXPERIENCES.find(e => e.id === id).title }), exp);
-  if (!boot.title.includes(boot.want)) throw Error('AuraOS boot does not show the chosen game: ' + JSON.stringify(boot));
-  await page.click('#b-desk');
-  await page.waitForFunction(id => window.__aura?.Engine.cur?.id === id, exp, { timeout: 15000 });
+  await page.waitForFunction(id => window.__aura?.Engine.cur?.id === id, exp, { timeout: 20000 });
+  const boot = await page.evaluate(id => ({ hidden: document.getElementById('boot').hidden, want: window.__aura.EXPERIENCES.find(e => e.id === id).title }), exp);
+  if (!boot.hidden) throw Error('AuraOS showed its start screen instead of opening the game directly');
+
+  // VR Box: BlueNav in cardboard mode hands over to AuraOS in cardboard mode, straight into the game.
+  await page.goto(base + '?auto=cardboard');
+  await page.waitForFunction(() => window.__app?.menu && window.__app.mode === 'cardboard' && !window.__app.loading, null, { timeout: 30000 });
+  await page.evaluate(() => { const m = window.__app.menu; m.toggle(true); m.showLibrary('own'); m.showPage(3); });
+  await page.waitForURL(/auraos-xr\.html\?exp=[a-z]+&from=bluenav&mode=cardboard/, { timeout: 25000 });
+  await page.waitForFunction(() => window.__aura?.Engine.cur && window.__aura.CARD.on, null, { timeout: 20000 });
+  const card = await page.evaluate(() => ({ boot: document.getElementById('boot').hidden, divider: !document.getElementById('divider').hidden, exp: window.__aura.Engine.cur.id }));
+  if (!card.boot || !card.divider) throw Error('AuraOS did not open directly in VR Box mode: ' + JSON.stringify(card));
+  await page.screenshot({ path: 'artifacts/aura-library/cardboard.png' });
   if (errors.length) throw Error(errors.join('\n'));
-  console.log(`library: ${info.tiles} tiles, ${info.pages} pages, ${info.aura} AuraOS · gaze on tile opened ${boot.want} in AuraOS: OK`);
+  console.log(`library: ${info.tiles} tiles, ${info.pages} pages, ${info.aura} AuraOS · gaze on tile opened ${boot.want} directly · VR Box opened ${card.exp} directly in split screen: OK`);
 } finally { await browser.close(); }

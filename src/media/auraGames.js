@@ -13,4 +13,4 @@ export const AURA_GAMES = [
   ['observ', 'Observatório Cósmico', 'Relaxar', '#1a5a5a'], ['koi', 'Lagoa Koi', 'Realidade mista', '#1f5a7a'],
 ].map(([exp, name, category, color]) => ({ id: 'aura-' + exp, exp, name, category, color, aura: true }));
 
-export const auraUrl = exp => new URL(`auraos-xr.html?exp=${encodeURIComponent(exp)}&from=bluenav`, document.baseURI).href;
+export const auraUrl = (exp, mode = '') => new URL(`auraos-xr.html?exp=${encodeURIComponent(exp)}&from=bluenav${mode ? '&mode=' + mode : ''}`, document.baseURI).href;
