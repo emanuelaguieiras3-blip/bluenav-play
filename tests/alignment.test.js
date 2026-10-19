@@ -103,7 +103,9 @@ test('accepted frames are displayed after their pose; rejected and stopped frame
   const bitmap = { close() { events.push('close'); } };
   tracker._onResult({ t: performance.now(), ms: 10, res: {}, bitmap });
   assert.deepEqual(events, ['pose', 'image', 'close']); events.length = 0;
-  tracker._onResult({ t: performance.now() - 300, ms: 10, res: {}, bitmap });
+  tracker._onResult({ t: performance.now() - 300, ms: 300, res: {}, bitmap });
+  assert.deepEqual(events, ['pose', 'image', 'close']); events.length = 0;
+  tracker._onResult({ t: performance.now() - 900, ms: 900, res: {}, bitmap });
   assert.deepEqual(events, ['close']); events.length = 0;
   tracker.stop(); tracker._onResult({ t: performance.now(), ms: 10, res: {}, bitmap });
   assert.deepEqual(events, ['live', 'close']);

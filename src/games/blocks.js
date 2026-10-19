@@ -158,6 +158,9 @@ export default {
         sun.position.set(W / 2, 4, W / 2).addScaledVector(sunDir, 40); sun.intensity = 2.4 * day + 0.05;
         env.hemi.intensity = 0.35 + day * 1.1;
         waterTex.offset.x += dt * 0.02; waterTex.offset.y += dt * 0.01;
+        // Breaking the block underfoot drops the player instead of leaving them floating.
+        const ground = topAt(rig.position.x, rig.position.z);
+        if (ground < rig.position.y - 0.01) rig.position.y = Math.max(ground, rig.position.y - dt * 6);
 
         // barra segue o corpo devagar, embaixo à direita
         const hy = app.headYaw();

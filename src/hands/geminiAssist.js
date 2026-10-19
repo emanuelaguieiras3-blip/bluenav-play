@@ -1,6 +1,7 @@
 // Assistente Gemini: recebe uma janela curta de frames da mão e devolve os pontos corrigidos.
 // Roda em segundo plano, nunca trava a renderização. O resultado calibra o corretor local.
 import { CONFIG } from '../../config.js';
+import { ButtonAssist } from './buttonAssist.js';
 
 export const SYSTEM_PROMPT = `Você é um corretor de dados de rastreamento de mãos para um projeto de VR no navegador chamado BlueNav Play.
 
@@ -29,8 +30,12 @@ REGRAS OBRIGATÓRIAS:
 {
   "pontosCorrigidos": [[x,y,z], [x,y,z], ...],
   "gesto": "pinça|aberta|apontando|indefinida",
-  "confianca": 0.0 a 1.0
+  "confianca": 0.0 a 1.0,
+  "toque": { "marginMm": 4, "releaseMm": 30 }
 }
+- Calibre somente a tolerância do toque pelo ruído do indicador: marginMm entre 2 e 8 mm; releaseMm entre 25 e 45 mm.
+- Não decida cliques, não invente posições de botões e não aumente a tolerância para compensar movimentos reais.
+- Sem evidência suficiente, omita toque. O clique é calculado localmente pela colisão do dedo com o botão.
 - Sem explicações, sem comentários, sem texto extra
 - Se não tiver certeza, devolva os pontos originais e confiança baixa
 
@@ -48,18 +53,21 @@ export class GeminiAssist {
     this.calls = 0;
     this.agree = 0;
     this.controller = null;
+    this.buttons = new ButtonAssist(this);
   }
 
   cancel() { this.controller?.abort(); }
 
   _endpoint(model) {
-    if (CONFIG.GEMINI_PROXY_URL) return { url: CONFIG.GEMINI_PROXY_URL, headers: {} };
-    const key = CONFIG.GEMINI_API_KEY;
-    // Chaves "AIza..." = Google AI Studio; chaves "AQ...." = Vertex AI (modo express)
-    if (key.startsWith('AIza')) {
-      return { url: `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, headers: { 'x-goog-api-key': key } };
+    if (CONFIG.GEMINI_PROXY_URL) {
+      const url = new URL(CONFIG.GEMINI_PROXY_URL, globalThis.location?.href || 'http://localhost/');
+      url.searchParams.set('model', model);
+      return { url: url.href, headers: {} };
     }
-    return { url: `https://aiplatform.googleapis.com/v1/publishers/google/models/${model}:generateContent?key=${encodeURIComponent(key)}`, headers: {} };
+    const key = CONFIG.GEMINI_API_KEY;
+    // AQ. keys can belong to the Gemini API or to Vertex: try the Gemini API first, Vertex after a refusal.
+    if (key.startsWith('AQ.') && this.vertex) return { url: `https://aiplatform.googleapis.com/v1/publishers/google/models/${model}:generateContent?key=${encodeURIComponent(key)}`, headers: {} };
+    return { url: `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, headers: { 'x-goog-api-key': key } };
   }
 
   // frames: [{t, pontos:[[x,y,z]x21]}]  — chamado pelo HandTracker
@@ -92,9 +100,17 @@ export class GeminiAssist {
         if (r.status === 404 && this.modelIdx < CONFIG.GEMINI_MODELS.length - 1) { this.modelIdx++; this.retrySoon = true; throw new Error('modelo indisponível, tentando outro'); }
         if (r.status === 400 && !this.noThinkingCfg) { this.noThinkingCfg = true; this.retrySoon = true; throw new Error('ajustando requisição'); }
         if (r.status === 429) { this.backoff = Math.min(60000, this.backoff * 2); throw new Error('limite de uso (429)'); }
+        if ((r.status === 401 || r.status === 403) && !CONFIG.GEMINI_PROXY_URL && CONFIG.GEMINI_API_KEY.startsWith('AQ.') && !this.vertex) {
+          this.vertex = true; this.retrySoon = true; throw new Error('tentando Vertex');
+        }
+        if (r.status === 401 || r.status === 403) {
+          const error = typeof r.json === 'function' ? await r.json().catch(() => null) : null;
+          if (/has not been used|api.*disabled/i.test(error?.error?.message || '')) throw new Error('API Vertex desativada no projeto Google');
+          throw new Error('chave Gemini inválida ou sem permissão (' + r.status + ')');
+        }
         if (!r.ok) throw new Error('HTTP ' + r.status);
         const j = await r.json();
-        const text = j?.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || '';
+        const text = j?.candidates?.[0]?.content?.parts?.filter((p) => !p.thought).map((p) => p.text || '').join('') || '';
         const out = JSON.parse(text.replace(/^```json|```$/g, '').trim());
         if (!Array.isArray(out.pontosCorrigidos) || out.pontosCorrigidos.length !== 21 ||
             !out.pontosCorrigidos.every((p) => Array.isArray(p) && p.length === 3 && p.every(Number.isFinite)) ||

@@ -45,6 +45,7 @@ export function drawIcon(x, name, cx, cy, s, color = T.text, lw = Math.max(2, s 
     case 'pick': P('M14.5 4.5c3 0 5 2 5 5M4 20l9-9M9.5 4.5c3-1 7 0 10 3'); break;
     case 'block': P('M12 3 20 7.5v9L12 21l-8-4.5v-9zM12 12l8-4.5M12 12v9M12 12 4 7.5'); break;
     case 'walk': x.beginPath(); x.arc(13, 4.5, 1.8, 0, 6.29); x.fill(); P('M9 21l3-6 3 2v5M8 12l3-4 4 1 2 4M12 15l-1-6'); break;
+    case 'hand': P('M5 21c-1-2-2-4-3-6-.5-1 1-2 2-1l3 3V7a1.5 1.5 0 0 1 3 0v6-9a1.5 1.5 0 0 1 3 0v9-7a1.5 1.5 0 0 1 3 0v7-5a1.5 1.5 0 0 1 3 0v8c0 3-2 5-5 5z'); break;
     default: break;
   }
   x.restore();

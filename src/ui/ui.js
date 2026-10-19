@@ -7,7 +7,15 @@ import * as THREE from 'three';
 import { CONFIG } from '../../config.js';
 import { FingerContact } from '../hands/fingerContact.js';
 
+const CONFIRM_HOLD = 0.45; // s com o dedo no botão quando o Gemini pede confirmação
+const NEAR_MISS_DEPTH = 0.035; // m: dedo parado à frente do botão sem tocar
+const NEAR_MISS_DWELL = 0.45;  // s parado perto antes de perguntar ao Gemini
+const NEAR_MISS_CONFIDENCE = 0.75;
+const CONTACT_CONFIDENCE = 0.6; // Gemini decides a fingertip collision with at least this confidence
+const BUTTON_TRAVEL = 0.012;     // m: how far a button sinks under the fingertip
+
 const SWIPE_ANGLE = 0.11; // ~6° de movimento antes de virar arrasto
+const clampTravel = d => Math.max(0, Math.min(BUTTON_TRAVEL, d));
 
 export class UI {
   constructor(app) {
@@ -106,8 +114,9 @@ export class UI {
       if (s.seen) continue;
       if (s.drag) { s.drag.end?.(s.lastP); s.drag = null; s.dragMesh = null; }
       this._clearHover(s); s.press = null;
-      s.cursor.visible = false; s.line.visible = false;
+      s.cursor.visible = false; s.line.visible = false; this._unsink(s); s.confirm = null; if (s.hint) s.hint.visible = false;
       if (!input._ptrs?.has(id)) {
+        if (s.hint) { s.hint.material.map.dispose(); s.hint.material.dispose(); s.hint.geometry.dispose(); s.hint.removeFromParent(); }
         s.cursor.traverse((o) => { o.geometry?.dispose(); o.material?.dispose(); });
         s.line.geometry.dispose(); s.line.material.dispose();
         s.cursor.removeFromParent(); s.line.removeFromParent(); this.states.delete(id);
@@ -130,16 +139,16 @@ export class UI {
     s.lastP = p;
     if (p.stale && !p.system) {
       // Tracking dropout is not a release. Keep the grab, suppress new actions.
-      s.press = null; s.prevTip = null; s.contact.suspend();
-      this._clearHover(s); s.cursor.visible = false; s.line.visible = false;
+      s.press = null; s.prevTip = null; s.contact.suspend(); s.confirm = null; this._showHint(s, null);
+      this._clearHover(s); s.cursor.visible = false; s.line.visible = false; this._unsink(s);
       return;
     }
     if (p.system) {
       if (s.drag) s.drag.end?.(p);
       s.drag = null; s.dragMesh = null; s.press = null;
       this._clearHover(s); s.tap = null; s.tapArmed = undefined;
-      s.cursor.visible = false; s.line.visible = false;
-      s.prevTip = null; s.contact.reset();
+      s.cursor.visible = false; s.line.visible = false; this._unsink(s);
+      s.prevTip = null; s.contact.reset(); s.confirm = null; this._showHint(s, null);
       return;
     }
     // arrasto em andamento (mover janela, pegar objeto) — cada mão o seu
@@ -151,23 +160,29 @@ export class UI {
     // toque direto com o dedo (perto do painel o Quest troca o raio pelo dedo)
     let hit = null, poking = false, pokeClick = false;
     if (p.pokeTip && vis.length) {
+      s.contact.calibrate(p.hand?.touchProfile, p.hand?.confianca);
       const previousTip = s.prevTip?.clone();
       const eye = app.camera.getWorldPosition(new THREE.Vector3());
       const dir = p.pokeTip.clone().sub(eye).normalize();
       this.raycaster.set(p.pokeTip.clone().addScaledVector(dir, -0.06), dir);
       this.raycaster.far = 0.16;
-      let ph = this.raycaster.intersectObjects(vis, false)[0];
+      // Ignore grabbable geometry in the contact pass; it still receives rays.
+      const clickable = candidate => !!this._subFor(candidate)?.onClick;
+      let ph = this.raycaster.intersectObjects(vis, false).find(clickable);
       // Sweep the fingertip: a quick push must not pass through a thin button.
       if (s.prevTip) {
         const movement = p.pokeTip.clone().sub(s.prevTip), distance = movement.length();
         if (distance > 0.001 && distance < 0.2) {
           this.raycaster.set(s.prevTip, movement.divideScalar(distance));
           this.raycaster.far = distance + 0.004;
-          const swept = this.raycaster.intersectObjects(vis, false)[0];
+          const swept = this.raycaster.intersectObjects(vis, false).find(clickable);
           if (swept) ph = swept;
         }
       }
       if (!s.prevTip) s.prevTip = p.pokeTip.clone(); else s.prevTip.copy(p.pokeTip);
+      // Only clickable targets are poked. A fingertip resting on a grabbable
+      // object must not block the pinch that picks it up.
+      if (ph && !this._subFor(ph)?.onClick) ph = null;
       if (ph) {
         hit = ph; poking = true;
         const normal = ph.face.normal.clone().transformDirection(ph.object.matrixWorld);
@@ -176,6 +191,7 @@ export class UI {
         const contactSub = this._subFor(ph);
         const previousDepth = previousTip ? -previousTip.sub(ph.point).dot(normal) : null;
         pokeClick = s.contact.update(contactSub ? ph.object.uuid + '|' + contactSub.key : null, depth, previousDepth);
+        s.pokeDepth = depth;
         if (pokeClick) s.pokePoint = ph.point.clone();
       } else if (!s.pokePoint || p.pokeTip.distanceTo(s.pokePoint) > 0.045) s.contact.reset();
     } else s.prevTip = null;
@@ -195,7 +211,44 @@ export class UI {
         if (sub.onClick) app.audio.hover();
       }
     } else if (sub) s.hoverSub = sub;
-    if (pokeClick && sub?.onClick && !s.drag) { s.press = null; this._fire(s, sub, hit.object); }
+    const advice = poking && sub?.onClick ? this._advice(sub, hit.object) : null;
+    // Distance track of the fingertip on this button, shared by both Gemini paths.
+    if (poking && sub?.onClick) {
+      if (!s.trace || s.trace.key !== key) s.trace = { key, t: 0, samples: [] };
+      s.trace.t += dt; s.trace.samples.push([Math.round(-s.pokeDepth * 1000), Math.round(s.trace.t * 1000)]); if (s.trace.samples.length > 16) s.trace.samples.shift();
+    } else s.trace = null;
+    if (pokeClick && sub?.onClick && !s.drag) {
+      s.press = null;
+      // Gemini marked this button as risky: keep the finger on it to confirm.
+      if (advice?.confirmar) s.confirm = { key, t: 0 };
+      else this._contactClick(s, sub, hit.object, key);
+    }
+    if (s.verdict?.key === key && s.verdict.ready) { const v = s.verdict; s.verdict = null; if (v.press) this._fire(s, v.sub, v.mesh); }
+    else if (s.verdict && performance.now() - s.verdict.at > 4000) s.verdict = null;
+    // Near miss: the fingertip stops just in front of a button and the contact test
+    // does not fire (camera depth error). Gemini judges the approach once; a
+    // confident "press" clicks once. Risky buttons still need a real touch.
+    const assist = this.app.hands?.gemini?.buttons, margin = s.contact.profile.marginMm / 1000;
+    if (poking && sub?.onClick && assist?.active && !pokeClick && !s.confirm && !s.drag && !advice?.confirmar
+        && s.pokeDepth < -margin && s.pokeDepth > -NEAR_MISS_DEPTH) {
+      if (!s.near || s.near.key !== key) s.near = { key, t: 0, samples: [], asked: false, verdict: null };
+      const near = s.near; near.t += dt;
+      near.samples.push([Math.round(-s.pokeDepth * 1000), Math.round(near.t * 1000)]); if (near.samples.length > 16) near.samples.shift();
+      if (!near.asked && !near.fired && near.t >= NEAR_MISS_DWELL) { near.asked = true; assist.judge(this._label(sub, hit.object), near.samples).then(v => { near.verdict = v; }); }
+      if (!near.fired && near.verdict?.pressionar && near.verdict.confianca >= NEAR_MISS_CONFIDENCE) { near.fired = true; s.contact.suspend(); this._fire(s, sub, hit.object); }
+    } else if (!poking || key !== s.near?.key || s.pokeDepth <= -NEAR_MISS_DEPTH) s.near = null; // re-arm only after the finger leaves
+    const sinkObj = poking && sub?.onClick ? (sub.press || hit.object.userData.ui.press) : null;
+    if (s.sink && s.sink !== sinkObj) { s.sink.position.z = s.sink.userData.restZ; s.sink = null; }
+    if (sinkObj) {
+      if (sinkObj.userData.restZ == null) sinkObj.userData.restZ = sinkObj.position.z;
+      sinkObj.position.z = sinkObj.userData.restZ - clampTravel(s.pokeDepth + margin); s.sink = sinkObj;
+    }
+    if (s.confirm) {
+      const touching = poking && key === s.confirm.key && s.pokeDepth >= -0.012;
+      if (!touching) s.confirm = null;
+      else if ((s.confirm.t += dt) >= CONFIRM_HOLD) { s.confirm = null; this._fire(s, sub, hit.object); }
+    }
+    this._showHint(s, poking && advice ? (s.confirm ? 'Segure para confirmar · ' + advice.dica : advice.dica) : null, hit?.point);
 
     const gaze = p.source === 'gaze';
     if (!poking && !s.drag) {
@@ -217,18 +270,9 @@ export class UI {
           s.press = null;
         } else if (!p.pinch) s.press = null;
       }
-      // dedo apontando para o botão: "empurrar" o dedo para frente clica na hora
-      if (p.fingerAim && sub && sub.onClick && !s.press && !p.pinch) {
-        const now = performance.now();
-        if (s.tapKey !== key) { s.tap = []; s.tapKey = key; }
-        s.tap = (s.tap || []).filter((q) => now - q[0] < 180);
-        s.tap.push([now, p.tipDepth]);
-        const minD = Math.min(...s.tap.map((q) => q[1]));
-        if (s.tapArmed !== false && p.tipDepth - minD > 0.025) { s.tapArmed = false; this._fire(s, sub, hit.object); }
-        if (p.tipDepth < (s.tapRest ?? p.tipDepth) - 0.015 || s.tapArmed === undefined) s.tapArmed = true;
-        s.tapRest = s.tapArmed ? p.tipDepth : Math.max(s.tapRest ?? 0, p.tipDepth);
-      } else { s.tap = null; s.tapKey = null; s.tapArmed = undefined; s.tapRest = undefined; }
-      // parar o olhar (papelão sem mãos) ou o dedo em cima do botão por 0,65s
+      // Distant pointing uses pinch; moving the hand toward a distant ray hit
+      // is not a physical touch and must never click a library tile.
+      // Parar o olhar (papelão sem mãos) por 0,65s.
       if (gaze && sub && sub.onClick && !s.fired && !s.press) {
         s.dwellT += dt;
         if (s.dwellT >= (sub.dwell ?? CONFIG.DWELL_TIME)) this._fire(s, sub, hit.object);
@@ -237,7 +281,8 @@ export class UI {
 
     // ---- cursor ----
     const strength = p.pinchStrength || 0;
-    const progress = gaze && sub && sub.onClick && !s.fired ? Math.min(1, s.dwellT / (sub.dwell ?? CONFIG.DWELL_TIME)) : 0;
+    const progress = s.confirm ? Math.min(1, s.confirm.t / CONFIRM_HOLD)
+      : gaze && sub && sub.onClick && !s.fired ? Math.min(1, s.dwellT / (sub.dwell ?? CONFIG.DWELL_TIME)) : 0;
     let n = null;
     const gameHit = p.main ? app.pointerHit : null;
     if (hit) {
@@ -274,7 +319,44 @@ export class UI {
     col.setW(0, 0.45 + 0.3 * strength + 0.2 * near);
     col.setW(1, sub ? 0.25 + 0.4 * near : 0.02);
     col.needsUpdate = true;
-    s.line.visible = !gaze && !poking && !p.system && !p.hideRay;
+    // Hands get no ray line: the cursor marks the target and the fingertip touches it.
+    s.line.visible = !gaze && !poking && !p.system && !p.hideRay && p.source !== 'hand';
+  }
+
+  // Gemini hint for the button under the fingertip (null when Gemini is off).
+  _advice(sub, mesh) {
+    const assist = this.app.hands?.gemini?.buttons;
+    if (!assist?.active) return null;
+    return assist.lookup(this._label(sub, mesh), this.app.menu?.open ? 'menu do sistema' : 'jogo ' + (this.app.gameId || ''));
+  }
+
+  _label(sub, mesh) {
+    const raw = sub.label ?? mesh.userData.ui.label;
+    return typeof raw === 'function' ? raw() : raw;
+  }
+
+  _showHint(s, text, point) {
+    if (!text || !point) { if (s.hint) s.hint.visible = false; return; }
+    if (!s.hint) {
+      const canvas = document.createElement('canvas'); canvas.width = 960; canvas.height = 128;
+      const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
+      s.hint = new THREE.Mesh(new THREE.PlaneGeometry(0.30, 0.04), new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthTest: false, depthWrite: false }));
+      s.hint.renderOrder = 1000; this.app.scene.add(s.hint);
+    }
+    if (s.hint.userData.text !== text) {
+      s.hint.userData.text = text;
+      const texture = s.hint.material.map, canvas = texture.image, x = canvas.getContext('2d');
+      x.clearRect(0, 0, canvas.width, canvas.height);
+      x.fillStyle = 'rgba(16,20,40,0.92)'; x.beginPath(); x.roundRect(2, 2, canvas.width - 4, canvas.height - 4, 60); x.fill();
+      x.strokeStyle = 'rgba(127,200,255,0.6)'; x.lineWidth = 3; x.stroke();
+      x.fillStyle = '#e8eeff'; x.font = '600 44px system-ui, "Segoe UI", sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+      x.fillText(text, canvas.width / 2, canvas.height / 2, canvas.width - 70);
+      texture.needsUpdate = true;
+    }
+    const camera = this.app.camera, up = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.getWorldQuaternion(new THREE.Quaternion()));
+    s.hint.position.copy(point).addScaledVector(up, 0.06);
+    s.hint.quaternion.copy(camera.getWorldQuaternion(new THREE.Quaternion()));
+    s.hint.visible = true;
   }
 
   // encerra um arrasto pelo lado do jogo (ex.: peça que encaixou sozinha)
@@ -289,12 +371,25 @@ export class UI {
     }
   }
 
+  // A fingertip collided with a button: Gemini judges the approach; without Gemini the contact clicks.
+  _unsink(s) { if (s.sink) { s.sink.position.z = s.sink.userData.restZ; s.sink = null; } }
+
+  _contactClick(s, sub, mesh, key) {
+    const assist = this.app.hands?.gemini?.buttons;
+    if (!assist?.active) { this._fire(s, sub, mesh); return; }
+    const verdict = s.verdict = { key, sub, mesh, at: performance.now(), ready: false, press: false };
+    assist.judge(this._label(sub, mesh), s.trace?.samples || [], 'colisao').then(v => {
+      if (s.verdict !== verdict) return;
+      verdict.press = v ? v.pressionar && v.confianca >= CONTACT_CONFIDENCE : true; verdict.ready = true;
+    });
+  }
+
   _fire(s, sub, mesh) {
     s.fired = true;
     s.flash = 0.2;
     const u = mesh.userData.ui;
     const obj = sub.press || u.press;
-    if (obj && !this.presses.some((q) => q.obj === obj)) this.presses.push({ obj, t: 0, z0: obj.position.z });
+    if (obj && !this.presses.some((q) => q.obj === obj)) this.presses.push({ obj, t: 0, z0: obj.userData.restZ ?? obj.position.z });
     if (u.sound !== false && sub.sound !== false) (sub.keySound || u.keySound ? this.app.audio.keyTap() : this.app.audio.click());
     try { sub.onClick(sub, mesh); } catch (e) { console.error(e); }
   }

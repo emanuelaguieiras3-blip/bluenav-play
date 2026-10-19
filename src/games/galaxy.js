@@ -22,11 +22,14 @@ export default {
 
     // naves inimigas: metal fosco com bordas azuis brilhantes
     const hullMat = std({ map: tex.get('metalPanel'), emissiveMap: tex.get('panelGlow'), emissive: '#3fb6ff', emissiveIntensity: 1.4, roughness: 0.75, metalness: 0.5 });
+    // Shared by every ship: destroyed ships used to leak their geometry and material.
+    const hullGeo = new THREE.OctahedronGeometry(0.7, 0).scale(1, 0.35, 1.4), wingGeo = new THREE.BoxGeometry(2.4, 0.06, 0.6);
+    const engineMat = new THREE.SpriteMaterial({ map: glowTexture('rgba(90,190,255,1)'), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
     const makeShip = () => {
       const g = new THREE.Group();
-      g.add(new THREE.Mesh(new THREE.OctahedronGeometry(0.7, 0).scale(1, 0.35, 1.4), hullMat));
-      const wing = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.06, 0.6), hullMat); g.add(wing);
-      const eng = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture('rgba(90,190,255,1)'), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+      g.add(new THREE.Mesh(hullGeo, hullMat));
+      const wing = new THREE.Mesh(wingGeo, hullMat); g.add(wing);
+      const eng = new THREE.Sprite(engineMat);
       eng.scale.set(0.8, 0.8, 1); eng.position.z = 1.0; g.add(eng);
       return g;
     };

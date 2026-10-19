@@ -10,6 +10,55 @@ const points = Array.from({ length: 21 }, (_, i) => [i * 0.001, 0.01, -0.4]);
 const frames = Array.from({ length: 8 }, (_, i) => ({ t: i * 60, pontos: points }));
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
+test('Gemini setup uses AI Studio headers, ignores thought text, and reports denied credentials', async () => {
+  const oldFetch = globalThis.fetch, oldProxy = CONFIG.GEMINI_PROXY_URL, oldKey = CONFIG.GEMINI_API_KEY;
+  CONFIG.GEMINI_PROXY_URL = ''; CONFIG.GEMINI_API_KEY = 'session-test-key';
+  const g = new GeminiAssist(); g.enabled = true;
+  let applied = 0;
+  try {
+    globalThis.fetch = async (url, options) => {
+      assert.ok(url.startsWith('https://generativelanguage.googleapis.com/'));
+      assert.ok(!url.includes(CONFIG.GEMINI_API_KEY));
+      assert.equal(options.headers['x-goog-api-key'], 'session-test-key');
+      return { ok: true, json: async () => ({ candidates: [{ content: { parts: [
+        { thought: true, text: 'private reasoning' },
+        { text: JSON.stringify({ pontosCorrigidos: points, gesto: 'aberta', confianca: 0.8 }) },
+      ] } }] }) };
+    };
+    g.maybeSend(performance.now(), frames, 'aberta', () => { applied++; });
+    await settle(); assert.equal(applied, 1);
+    globalThis.fetch = async () => ({ ok: false, status: 403 });
+    g.nextAt = 0; g.maybeSend(performance.now(), frames, 'aberta', () => { applied++; });
+    await settle(); assert.match(g.status, /403/); assert.equal(applied, 1); assert.equal(g.busy, false);
+  } finally { g.cancel(); globalThis.fetch = oldFetch; CONFIG.GEMINI_PROXY_URL = oldProxy; CONFIG.GEMINI_API_KEY = oldKey; }
+});
+
+test('Gemini tries the Gemini API for an AQ key, then Vertex, and names a disabled API', async () => {
+  const oldFetch = globalThis.fetch, oldProxy = CONFIG.GEMINI_PROXY_URL, oldKey = CONFIG.GEMINI_API_KEY;
+  CONFIG.GEMINI_PROXY_URL = ''; CONFIG.GEMINI_API_KEY = 'AQ.test-only';
+  const gemini = new GeminiAssist(); gemini.enabled = true;
+  try {
+    const urls = [];
+    globalThis.fetch = async (url, options) => {
+      urls.push(url);
+      if (urls.length === 1) {
+        assert.match(url, /^https:\/\/generativelanguage\.googleapis\.com\//);
+        assert.equal(options.headers['x-goog-api-key'], 'AQ.test-only');
+        return { ok: false, status: 403, json: async () => ({ error: { message: 'API key not valid for this API.' } }) };
+      }
+      assert.match(url, /^https:\/\/aiplatform\.googleapis\.com\/v1\/publishers\/google\/models\//);
+      assert.equal(options.headers['x-goog-api-key'], undefined);
+      return { ok: false, status: 403, json: async () => ({ error: { message: 'Agent Platform API has not been used in project before or it is disabled.' } }) };
+    };
+    gemini.maybeSend(performance.now(), frames, 'aberta', () => {});
+    await settle();
+    gemini.nextAt = 0; gemini.maybeSend(performance.now(), frames, 'aberta', () => {});
+    await settle();
+    assert.equal(urls.length, 2);
+    assert.match(gemini.status, /API Vertex desativada/);
+  } finally { gemini.cancel(); globalThis.fetch = oldFetch; CONFIG.GEMINI_PROXY_URL = oldProxy; CONFIG.GEMINI_API_KEY = oldKey; }
+});
+
 test('Gemini uses one request, six frames, validates result, and releases busy state', async () => {
   const oldFetch = globalThis.fetch, oldProxy = CONFIG.GEMINI_PROXY_URL;
   CONFIG.GEMINI_PROXY_URL = 'https://test.invalid';

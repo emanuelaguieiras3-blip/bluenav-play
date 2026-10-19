@@ -14,14 +14,20 @@ import { VirtualKeyboard } from './ui/keyboard.js';
 import { ArcMenu } from './ui/menu.js';
 import { Teleport } from './ui/teleport.js';
 import { Passthrough } from './core/passthrough.js';
+import { getCamera } from './core/cameraFeed.js';
 import { HandView } from './hands/handView.js';
 import { VideoLayer, CatalogContent, PlayerContent } from './media/youtube.js';
-import { loadGameModule } from './games/index.js';
+import { loadGameModule, GAME_OBJECTIVES } from './games/index.js';
 import { HAND_CONTROLS } from './games/handControls.js';
-import { createGameGraphics } from './games/graphics.js';
+import { createGameGraphics, textureSurfaces } from './games/graphics.js';
 import { createExternalApps } from './media/externalApps.js';
 import { createSecurityPanel } from './security/securityAssist.js';
 import { WalkIntent, walkStep } from './core/locomotion.js';
+import { createPhysicsKit } from './games/physicsKit.js';
+import { createSceneProps } from './games/sceneProps.js';
+import { roundBoxes, CUBIC_GAMES } from './games/roundGeometry.js';
+import { NetworkRoom } from './core/network.js';
+import { T } from './ui/theme.js';
 
 // Barra que acompanha o corpo devagar (embaixo da visão): início, menu e placar
 class HudBar {
@@ -30,23 +36,32 @@ class HudBar {
     this.group = new THREE.Group(); this.group.visible = false;
     app.rig.add(this.group);
     // pílula de vidro com dois ícones e o placar
-    const bg = makeLabel('', { w: 0.62, h: 0.075, bg: 'rgba(24,25,28,0.9)' });
+    const bg = makeLabel('', { w: 0.62, h: 0.075, bg: T.panel, radius: .12 });
     const home = makeButton(app, { w: 0.055, h: 0.055, icon: 'home', variant: 'ghost', round: true, onClick: () => app.loadGame('lobby') });
     const menu = makeButton(app, { w: 0.055, h: 0.055, icon: 'grid', variant: 'ghost', round: true, onClick: () => app.menu.toggle() });
     home.position.set(-0.27, 0, 0.003); menu.position.set(-0.205, 0, 0.003);
     this.label = makeLabel('', { w: 0.44, h: 0.07, size: 0.4, bg: 'rgba(0,0,0,0)' });
     this.label.position.set(0.075, 0, 0.003);
     this.group.add(bg, home, menu, this.label);
+    this.objective = makeLabel('', { w: 1.08, h: 0.14, size: 0.20, fg: T.text, bg: T.panel });
+    this.objective.position.set(0, 0.15, 0);
+    this.objective.visible = false;
+    this.objectiveDismissed = false;
+    this.objectiveClose = makeButton(app, { w: 0.055, h: 0.055, label: '×', variant: 'glass', round: true,
+      onClick: () => { this.objectiveDismissed = true; this.objective.visible = false; this.objectiveClose.visible = false; } });
+    this.objectiveClose.position.set(0.59, 0.15, 0.006);
+    this.objectiveClose.visible = false;
+    this.group.add(this.objective, this.objectiveClose);
     this.guide = new THREE.Group();
-    const guideBg = makeLabel('', { w: 0.86, h: 0.23, bg: 'rgba(16,20,28,0.94)' });
-    this.guideTitle = makeLabel('', { w: 0.8, h: 0.055, size: 0.42, fg: '#87bdff', bg: 'rgba(0,0,0,0)' });
+    const guideBg = makeLabel('', { w: 0.86, h: 0.23, bg: T.panel });
+    this.guideTitle = makeLabel('', { w: 0.8, h: 0.055, size: 0.42, fg: T.accent, bg: 'rgba(0,0,0,0)' });
     this.guideAction = makeLabel('', { w: 0.8, h: 0.07, size: 0.32, bg: 'rgba(0,0,0,0)' });
     this.guideTip = makeLabel('', { w: 0.8, h: 0.065, size: 0.29, bg: 'rgba(0,0,0,0)' });
     this.guideTitle.position.set(0, 0.074, 0.003);
     this.guideAction.position.z = 0.003;
     this.guideTip.position.set(0, -0.07, 0.003);
     this.guide.add(guideBg, this.guideTitle, this.guideAction, this.guideTip);
-    this.guide.position.y = 0.18;
+    this.guide.position.y = 0.47;
     const help = makeButton(app, { w: 0.055, h: 0.055, label: '?', variant: 'accent', round: true, onClick: () => { this.guide.visible = !this.guide.visible; this.guideTime = 0; } });
     help.position.set(0.35, 0, 0.003);
     this.group.add(this.guide, help);
@@ -60,7 +75,14 @@ class HudBar {
     this.pendingText = text;
     this.instruction = sub;
   }
-  controls(id) { this.controlId = id; this.guide.visible = !!HAND_CONTROLS[id]; this.guideTime = 12; }
+  setObjective(text) {
+    this.objective.visible = this.objectiveClose.visible = !!text && !this.objectiveDismissed;
+    if (text) {
+      const cut = text.length > 34 ? Math.max(18, text.lastIndexOf(' ', 33)) : text.length;
+      this.objective.userData.set(`OBJETIVO: ${text.slice(0, cut).trim()}`, text.slice(cut).trim());
+    }
+  }
+  controls(id) { this.controlId = id; this.guide.visible = !!HAND_CONTROLS[id]; this.guideTime = 7; }
   update(dt) {
     if (this.guideTime > 0) { this.guideTime -= dt; if (this.guideTime <= 0) this.guide.visible = false; }
     this.textTime = (this.textTime || 0) - dt;
@@ -152,6 +174,7 @@ export class App {
     this.menu = new ArcMenu(this);
     this.teleport = new Teleport(this);
     this.hud = new HudBar(this);
+    this.network = new NetworkRoom(this);
     this.handView = new HandView(this.scene);
     this.video = new VideoLayer(this);
     this.perf = new Perf(this);
@@ -186,9 +209,13 @@ export class App {
     this.menu.open && this.menu.toggle(true);
   }
 
-  async start(mode, { hands = false, gemini = false, onStatus = () => {} } = {}) {
+  async start(mode, { hands = false, gemini = false, cameraFacing = null, onStatus = () => {}, initialGame = null } = {}) {
     this.mode = mode;
+    this.cameraFacing = cameraFacing || (mode === 'cardboard' ? 'environment' : 'user');
     this.audio.unlock();
+    const facing = this.cameraFacing;
+    const cameraTask = (mode === 'cardboard' || hands && mode !== 'xr')
+      ? getCamera(facing).then(video => ({ video }), error => ({ error })) : null;
     document.getElementById('divider').hidden = mode !== 'cardboard';
     if (mode === 'cardboard') {
       try { await document.documentElement.requestFullscreen?.(); } catch { /* ok */ }
@@ -204,7 +231,7 @@ export class App {
     this.resize();
     this.renderer.setAnimationLoop((t, frame) => this.loop(t, frame));
     const params = new URLSearchParams(location.search);
-    await this.loadGame(params.get('game') || 'lobby');
+    await this.loadGame(initialGame || params.get('game') || 'lobby');
     if (params.has('yt')) this.openYouTube();
     if (params.has('pitch')) this.look.pitch = parseFloat(params.get('pitch'));
     if (params.has('fakehand')) this.hands = fakeHands(params.get('fakehand'));
@@ -217,26 +244,54 @@ export class App {
     if (this.passthrough.on === null) this.passthrough.on = true;
     if (mode === 'cardboard' && this.passthrough.on) {
       try {
-        const { getCamera } = await import('./core/cameraFeed.js');
         onStatus('Abrindo a câmera traseira…');
-        this.passthrough.attach(await getCamera('environment'), false);
+        const camera = await cameraTask;
+        if (camera.error) throw camera.error;
+        this.passthrough.attach(camera.video, facing === 'user');
       } catch (e) { console.warn('Passthrough indisponível:', e); }
     }
     if (hands && mode !== 'xr') {
       try {
-        const { HandTracker } = await import('./hands/handTracker.js');
-        this.hands = new HandTracker();
-        this.hands.hfovProvider = () => this.passthrough.displayHFOV; // mão virtual em cima da mão real
-        this.hands.onFrame = (frame) => this.passthrough.presentFrame(frame);
-        this.hands.gemini.enabled = gemini;
-        if (gemini) this.hands.gemini.status = 'aguardando mão';
-        await this.hands.start({ facing: mode === 'cardboard' ? 'environment' : 'user', onStatus });
+        const camera = await cameraTask;
+        if (camera.error) throw camera.error;
+        await this.enableHands({ facing, gemini, onStatus });
       } catch (e) {
         console.warn('Mãos indisponíveis:', e);
-        onStatus('Sem câmera — usando olhar/toque.');
+        this.handError = e.message;
+        onStatus('Mãos indisponíveis: ' + e.message);
+        this.hands?.stop();
         this.hands = null;
       }
     }
+  }
+
+  async enableHands({ facing = this.cameraFacing || 'environment', gemini = false, onStatus = () => {} } = {}) {
+    if (this.hands?.running || this._handsBusy) return;
+    if (this.mode === 'xr') { this.handError = 'Use o rastreamento nativo do headset.'; return; }
+    this._handsBusy = true;
+    try {
+      const video = await getCamera(facing);
+      this.passthrough.attach(video, facing === 'user');
+      const { HandTracker } = await import('./hands/handTracker.js');
+      const tracker = new HandTracker(); this.hands = tracker;
+      tracker.hfovProvider = () => this.passthrough.displayHFOV;
+      tracker.onFrame = frame => this.passthrough.presentFrame(frame);
+      tracker.gemini.enabled = gemini;
+      if (gemini) tracker.gemini.status = 'aguardando mão';
+      await tracker.start({ facing, onStatus });
+      this.handError = null;
+    } catch (error) {
+      this.hands?.stop(); this.hands = null;
+      this.handError = error.message;
+      onStatus('Mãos indisponíveis: ' + error.message);
+      throw error;
+    } finally { this._handsBusy = false; }
+  }
+
+  async toggleHands() {
+    if (this._handsBusy) return;
+    if (this.hands?.running) { this.hands.stop(); this.hands = null; return; }
+    try { await this.enableHands(); } catch (error) { console.warn('Rastreamento indisponível:', error); }
   }
 
   gameCtx() {
@@ -249,10 +304,14 @@ export class App {
       button: (opts) => makeButton(this, { ...opts, owner: 'game' }),
       label: makeLabel,
       hud: (t, s) => this.hud.set(t, s),
+      objective: (text) => this.hud.setObjective(text),
+      network: this.network,
       hudPose: (pitch, dist) => this.hud.pose(pitch, dist),
       // olhar inicial um pouco para baixo (mesas, bancadas) no modo tela normal
       lookDown: (pitch = -0.35) => { if (!this.orientation.active) this.look.pitch = pitch; },
       teleport: (o) => { this.teleport.configure(o); this.walk = !!o?.walk; },
+      // Q/E fly down/up instead of turning; the game moves the rig itself.
+      freeFlight: (on) => { this.freeFlight = !!on; },
       uiBusy: (p) => (p ? !!p.uiBusy : this.ui.hovering || !!this.ui.drag),
       pointers: () => (this.input.pointers || []).filter((q) => !q.system && !q.stale && !q.uiBusy && !q.locomotion),
       setPointerHit: (p) => { this.pointerHit = p ? (this._ph || (this._ph = new THREE.Vector3())).copy(p) : null; },
@@ -264,6 +323,7 @@ export class App {
   }
 
   async loadGame(id) {
+    if (this.network?.room && id !== this.gameId) this.network.leave();
     if (this.loading) return;
     this.loading = true;
     this.walkIntent.reset(); this.gameTime = 0;
@@ -275,13 +335,16 @@ export class App {
       this.onTeleport = null;
       this.game = null; // o jogo antigo não pode mais rodar enquanto o novo carrega
       this.graphics = null;
+      this.physicsKit = null;
+      try { this.sceneProps?.dispose(); } catch (e) { console.warn(e); }
+      this.sceneProps = null;
       this.ui.removeWhere((m) => m.userData.ui?.owner === 'game');
       disposeTree(this.root); this.root.clear();
       this.audio.stopAll(); this.tex.release('game');
       this.env.set({}); this.scene.fog = null;
       this.renderer.localClippingEnabled = false;
       this.rig.position.set(0, 0, 0); this.rig.rotation.set(0, 0, 0);
-      this.teleport.configure({}); this.walk = false;
+      this.teleport.configure({}); this.walk = false; this.freeFlight = false;
       this.pointerHit = null; this.hud.set(''); this.hud.pose();
       this.look.pitch = 0;
       this.handView.visible = true;
@@ -289,8 +352,15 @@ export class App {
       this.renderer.toneMappingExposure = id === 'night' ? 1.3 : id === 'dungeon' ? 1.15 : 1.05;
       this.ctx = this.gameCtx();
       this.gameId = id;
+      this.hud.objectiveDismissed = false;
+      this.hud.setObjective(id === 'lobby' ? '' : GAME_OBJECTIVES[id] || 'Siga as instruções do cenário para concluir a partida.');
       this.game = mod.default.create(this.ctx) || {};
       this.graphics = createGameGraphics(this.ctx, id);
+      // Rounded edges everywhere except the voxel games, then loose physical
+      // props that collide with the (rounded) furniture.
+      if (!CUBIC_GAMES.has(id)) this.roundedBoxes = roundBoxes(this.root);
+      this.sceneProps = createSceneProps(this.ctx, id);
+      this.surfaceTextures = textureSurfaces(this.ctx);
       // Only bounded opaque geometry casts desktop shadows; sky/ground don't.
       if (!this.perf.mobile) this.root.traverse((o) => {
         if (!o.isMesh || !o.geometry || o.userData.ui) return;
@@ -302,10 +372,11 @@ export class App {
       });
       this.hud.group.visible = id !== 'lobby';
       this.hud.controls(id);
+      if (id === 'pingpong' || id === 'universe' && this.mode === 'flat') this.hud.guide.visible = false;
       if (id === 'lobby') this.menu.toggle(true);
       this.passthrough.reset();
       // texturas finais e shaders prontos ANTES de mostrar: nada de travadinha no primeiro minuto
-      this.tex.flush();
+      await this.tex.prepare(); this.tex.flush();
       this.scene.updateMatrixWorld(true);
       try { if (this.renderer.compileAsync) await this.renderer.compileAsync(this.scene, this.camera); else this.renderer.compile(this.scene, this.camera); } catch { /* opcional */ }
     } catch (e) {
@@ -321,7 +392,14 @@ export class App {
     this.wm.open({ id: 'yt-catalog', title: 'YouTube · Catálogo', w: 1.1, h: 0.7, content: new CatalogContent(this) });
   }
 
-  openExternalApps() { this.menu.toggle(false); this.externalApps.show(); }
+  togglePhysics() {
+    if (!this.ctx || this.loading) return;
+    if (this.physicsKit) this.physicsKit.toggle();
+    else this.physicsKit = createPhysicsKit(this.ctx);
+    this.menu.toggle(false);
+  }
+
+  openExternalApps(id) { this.menu.toggle(false); this.externalApps.show(id); }
   openSecurity() { this.menu.toggle(false); this.securityPanel.show(); }
 
   playVideo(video) {
@@ -333,10 +411,10 @@ export class App {
   _look(dt) {
     const d = this.input.consumeLook();
     const keys = this.input.keys;
-    if (keys.has('ArrowLeft') || keys.has('KeyQ')) d.x -= 260 * dt;
-    if (keys.has('ArrowRight') || keys.has('KeyE')) d.x += 260 * dt;
-    if (keys.has('ArrowUp')) d.y -= 200 * dt;
-    if (keys.has('ArrowDown')) d.y += 200 * dt;
+    if (keys.has('ArrowLeft') || !this.freeFlight && keys.has('KeyQ')) d.x -= 260 * dt;
+    if (keys.has('ArrowRight') || !this.freeFlight && keys.has('KeyE')) d.x += 260 * dt;
+    if (this.mode !== 'cardboard' && keys.has('ArrowUp')) d.y -= 200 * dt;
+    if (this.mode !== 'cardboard' && keys.has('ArrowDown')) d.y += 200 * dt;
     if (this.orientation.update()) { this.orientation.manualYaw -= d.x * 0.004; return; }
     this.look.yaw -= d.x * 0.004; this.look.pitch = clamp(this.look.pitch - d.y * 0.004, -1.4, 1.4);
     this.camera.quaternion.setFromEuler(new THREE.Euler(this.look.pitch, this.look.yaw, 0, 'YXZ'));
@@ -349,7 +427,17 @@ export class App {
     const intent = this.walkIntent.update(dt, pointers, true);
     if (intent) { const hand = pointers.find(p => p.id === this.walkIntent.id); if (hand) hand.locomotion = true; }
     const k = this.input.keys;
-    const f = intent || (k.has('KeyW') ? 1 : 0) - (k.has('KeyS') ? 1 : 0), s = (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0);
+    const pad = this.input.gamepad || {};
+    if (Math.abs(pad.turn || 0) < 0.3) this._turnReady = true;
+    if (Math.abs(pad.turn || 0) > 0.7 && this._turnReady !== false) {
+      const eye = this.camera.getWorldPosition(new THREE.Vector3());
+      this.rig.rotation.y -= Math.sign(pad.turn) * Math.PI / 6;
+      this.rig.updateMatrixWorld(true);
+      const after = this.camera.getWorldPosition(new THREE.Vector3());
+      this.rig.position.x += eye.x - after.x; this.rig.position.z += eye.z - after.z;
+      this._turnReady = false;
+    }
+    const f = pad.forward || intent || (k.has('KeyW') || this.mode === 'cardboard' && k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || this.mode === 'cardboard' && k.has('ArrowDown') ? 1 : 0), s = pad.x || (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0);
     if (!f && !s) return;
     const yaw = this.headYaw() + this.rig.rotation.y, sp = (intent ? .85 : 1.6) * dt / Math.max(1, Math.hypot(f, s));
     const dx = (-Math.sin(yaw) * f + Math.cos(yaw) * s) * sp, dz = (-Math.cos(yaw) * f - Math.sin(yaw) * s) * sp;
@@ -362,7 +450,7 @@ export class App {
     }
   }
 
-  loop(t) {
+  loop(t, frame) {
     if (!this.perf.shouldRender(t)) return; // limite de 60 fps no celular
     const frameDt = this.clock.getDelta();
     const dt = Math.min(0.05, frameDt);
@@ -371,21 +459,24 @@ export class App {
     if (this.passthrough.mesh) this.passthrough._fit();
     if (this.hands) this.hands.update(now);
     this.camera.updateMatrixWorld(true);
-    this.input.update(dt);
+    this.input.update(dt, frame);
     if (this.input.consumeMenuRequest()) this.menu.toggle();
     if (this.input.consumeRecenter()) { this.recenter(); this.audio.success(); }
     const screenOverlay = !!this.screenDialog?.open || !!this.musicPickerOpen;
     this.gameplayBlocked = this.loading || screenOverlay || this.menu.open || document.hidden || this.wm.wins.some(w => !w.minimized);
     if (!screenOverlay) this.ui.update(dt, this.input);
-    const trackingLost = !!this.hands?.running && !this.input.hands.some((h) => !h.stale && h.confianca >= 0.3);
+    const trackingLost = !this.renderer.xr.isPresenting && !!this.hands?.running && !this.input.hands.some((h) => !h.stale && h.confianca >= 0.3);
     const paused = this.loading || trackingLost || screenOverlay || this.menu.open || document.hidden || this.wm.wins.some(w => !w.minimized) || (this.passthrough.covering && this.gameId !== 'lobby');
     if (paused && !this._wasPaused) this.ui.cancelOwner('game');
     this._wasPaused = paused; this.gameplayBlocked = paused;
     if (!paused) this._walk(dt); else { this.walkIntent.reset(true); this.input.pointers.forEach(p => p.locomotion = false); }
     this.game?.setPaused?.(paused || this.menu.open || document.hidden);
     this.teleport.update(dt, this.input, paused || this.menu.open || (this.input.source !== 'hand' && (this.ui.hovering || !!this.ui.drag)));
+    if (!paused) this.sceneProps?.update(dt);
     if (!paused) { this.gameTime += dt; try { this.game?.update?.(dt, this.gameTime, this.input); } catch (e) { console.error(e); this.game = null; } }
     if (!paused) this.graphics?.update(dt);
+    this.network.update(dt);
+    if (!paused) this.physicsKit?.update(dt);
     this.handView.update(this.input);
     this.wm.update(dt);
     this.keyboard.update(dt);

@@ -30,7 +30,9 @@ export const safeStorage = {
 export function disposeTree(obj, keep = new Set()) {
   const seen = new Set();
   obj.traverse((o) => {
-    if (o.geometry && !keep.has(o.geometry) && !seen.has(o.geometry)) { seen.add(o.geometry); o.geometry.dispose(); }
+    // Shared geometries (module caches, e.g. car bodies) are reused by the next
+    // scene; disposing them made the reused meshes stop rendering.
+    if (o.geometry && !o.geometry.userData?.shared && !keep.has(o.geometry) && !seen.has(o.geometry)) { seen.add(o.geometry); o.geometry.dispose(); }
     const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
     for (const m of mats) {
       if (keep.has(m) || seen.has(m)) continue;

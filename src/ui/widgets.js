@@ -7,14 +7,14 @@ import { T, drawIcon } from './theme.js';
 const VARIANTS = {
   default: { bg: T.surface, hover: T.surfaceHover, fg: T.text },
   ghost: { bg: 'rgba(255,255,255,0)', hover: 'rgba(255,255,255,0.10)', fg: T.text },
-  light: { bg: '#f2f3f5', hover: '#ffffff', fg: T.textOnLight },
+  light: { bg: T.surfaceActive, hover: '#ffffff', fg: T.textOnLight },
   accent: { bg: T.accent, hover: '#4a9bff', fg: '#ffffff' },
-  glass: { bg: 'rgba(24,25,28,0.88)', hover: 'rgba(52,55,61,0.95)', fg: T.text },
+  glass: { bg: T.panel, hover: T.surfaceHover, fg: T.text },
 };
 
 export function makeButton(app, {
   w = 0.24, h = 0.1, label = '', sub = null, icon = null, variant = 'default', round = false,
-  onClick, dwell, owner = 'ui', fontSize = 0.38, keySound = false, onHover = null,
+  onClick, dwell, owner = 'ui', fontSize = 0.38, keySound = false, onHover = null, hint = null,
 } = {}) {
   const group = new THREE.Group();
   const inner = new THREE.Group(); group.add(inner);
@@ -56,7 +56,7 @@ export function makeButton(app, {
   const face = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.02 }));
   inner.add(face);
   app.ui.add(face, {
-    onClick, dwell, press: inner, owner, keySound,
+    onClick, dwell, press: inner, owner, keySound, label: () => st.label || hint || st.icon || '',
     onHover: (on) => { st.hover = on; inner.scale.setScalar(on ? 1.035 : 1); draw(); onHover?.(on); },
   });
   face.userData.owner = owner;
@@ -70,7 +70,7 @@ export function makeButton(app, {
 }
 
 // Painel de texto simples (placar, instruções)
-export function makeLabel(text, { w = 0.6, h = 0.12, bg = 'rgba(24,25,28,0.86)', fg = T.text, size = 0.42, sub = null, radius = 0.5 } = {}) {
+export function makeLabel(text, { w = 0.6, h = 0.12, bg = T.panel, fg = T.text, size = 0.42, sub = null, radius = 0.5 } = {}) {
   const px = 256;
   const opts = (t, s) => ({ w: Math.min(1024, Math.round(px * w / h)), h: px, bg, fg, size, sub: s, radius, subColor: T.textDim });
   const mat = new THREE.MeshBasicMaterial({ map: textTexture(text, opts(text, sub)), transparent: true, depthWrite: false });

@@ -8,7 +8,7 @@ export function securityChecks({ secureContext, cameraActive, cloudHands, apiCon
   return [
     secureContext ? 'Conexão: contexto seguro (HTTPS ou localhost).' : 'Conexão: use HTTPS para câmera e sensores.',
     cameraActive ? 'Câmera: ativa para mãos/passthrough.' : 'Câmera: inativa.',
-    cloudHands ? 'Gemini das mãos: pontos do rastreamento podem ser enviados ao serviço.' : 'Gemini das mãos: desativado; correção local.',
+    cloudHands ? 'Gemini das mãos: pontos do rastreamento e o texto dos botões tocados podem ser enviados ao serviço.' : 'Gemini das mãos: desativado; correção local.',
     apiConfigured ? 'APIs: chaves no navegador são públicas. Restrinja domínio e cota no provedor.' : 'APIs: nenhuma chave configurada.',
     'Música local: analisada neste aparelho, sem upload pelo seletor.',
   ];
@@ -20,17 +20,18 @@ export class SecurityAssist {
     if (!key && !CONFIG.GEMINI_PROXY_URL) throw new Error('Configure Gemini para usar o assistente de IA. Os diagnósticos locais continuam disponíveis.');
     if (!question.trim() || question.length > 2000) throw new Error('Escreva uma pergunta de até 2.000 caracteres.');
     const model = CONFIG.GEMINI_MODELS[0];
-    const url = CONFIG.GEMINI_PROXY_URL || (key.startsWith('AIza')
-      ? `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
-      : `https://aiplatform.googleapis.com/v1/publishers/google/models/${model}:generateContent?key=${encodeURIComponent(key)}`);
-    const headers = { 'Content-Type': 'application/json' };
-    if (!CONFIG.GEMINI_PROXY_URL && key.startsWith('AIza')) headers['x-goog-api-key'] = key;
+    const gemini = { url: CONFIG.GEMINI_PROXY_URL || `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+      headers: { 'Content-Type': 'application/json', ...(CONFIG.GEMINI_PROXY_URL ? {} : { 'x-goog-api-key': key }) } };
+    // AQ. keys may be Vertex express keys: fall back there only after the Gemini API refuses them.
+    const vertex = !CONFIG.GEMINI_PROXY_URL && key.startsWith('AQ.') ? { headers: { 'Content-Type': 'application/json' },
+      url: `https://aiplatform.googleapis.com/v1/publishers/google/models/${model}:generateContent?key=${encodeURIComponent(key)}` } : null;
     this.controller?.abort(); const controller = new AbortController(); this.controller = controller;
     const timer = setTimeout(() => controller.abort(), 15000);
     try {
-      const response = await fetch(url, { method: 'POST', headers, signal: controller.signal,
-        body: JSON.stringify({ systemInstruction: { parts: [{ text: SECURITY_PROMPT }] },
-          contents: [{ role: 'user', parts: [{ text: question }] }], generationConfig: { temperature: 0.2, maxOutputTokens: 650 } }) });
+      const body = JSON.stringify({ systemInstruction: { parts: [{ text: SECURITY_PROMPT }] },
+        contents: [{ role: 'user', parts: [{ text: question }] }], generationConfig: { temperature: 0.2, maxOutputTokens: 650 } });
+      let response = await fetch(gemini.url, { method: 'POST', headers: gemini.headers, signal: controller.signal, body });
+      if (vertex && [401, 403].includes(response.status)) response = await fetch(vertex.url, { method: 'POST', headers: vertex.headers, signal: controller.signal, body });
       if ([401, 403].includes(response.status)) throw new Error(`Gemini não autorizou a consulta (HTTP ${response.status}). Verifique a chave e as permissões do projeto no provedor.`);
       if (!response.ok) throw new Error(`Serviço indisponível (HTTP ${response.status}). Tente novamente mais tarde.`);
       const data = await response.json();

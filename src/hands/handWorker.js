@@ -4,6 +4,7 @@
 var exports = {};
 var module = { exports: exports };
 let landmarker = null;
+let frameCanvas = null;
 
 self.onmessage = async (e) => {
   const m = e.data;
@@ -23,9 +24,11 @@ self.onmessage = async (e) => {
         // confiança de rastreamento mais baixa: não perde a mão em movimento rápido (borrão)
         minHandDetectionConfidence: 0.5, minHandPresenceConfidence: 0.4, minTrackingConfidence: 0.35,
       });
+      // Some Android WebViews never finish creating the GPU delegate inside a worker: give it 6 s, then use the CPU.
       let delegate = 'GPU';
-      try { landmarker = await vision.HandLandmarker.createFromOptions(fileset, opts('GPU')); }
-      catch { delegate = 'CPU'; landmarker = await vision.HandLandmarker.createFromOptions(fileset, opts('CPU')); }
+      const gpu = vision.HandLandmarker.createFromOptions(fileset, opts('GPU'));
+      try { landmarker = await Promise.race([gpu, new Promise((_, reject) => setTimeout(() => reject(new Error('GPU lento')), 6000))]); }
+      catch { gpu.then(late => late.close(), () => {}); delegate = 'CPU'; landmarker = await vision.HandLandmarker.createFromOptions(fileset, opts('CPU')); }
       self.postMessage({ type: 'ready', delegate });
     } catch (err) {
       self.postMessage({ type: 'error', message: String((err && err.message) || err) });
@@ -33,7 +36,16 @@ self.onmessage = async (e) => {
   } else if (m.type === 'frame') {
     const t0 = performance.now();
     let res = null;
-    try { res = landmarker.detectForVideo(m.bitmap, m.t); } catch { /* quadro perdido */ }
+    try {
+      let source = m.bitmap;
+      if (typeof OffscreenCanvas !== 'undefined' && m.bitmap.width > 480) {
+        const width = 480, height = Math.round(m.bitmap.height * width / m.bitmap.width);
+        if (!frameCanvas || frameCanvas.width !== width || frameCanvas.height !== height) frameCanvas = new OffscreenCanvas(width, height);
+        frameCanvas.getContext('2d').drawImage(m.bitmap, 0, 0, width, height);
+        source = frameCanvas;
+      }
+      res = landmarker.detectForVideo(source, m.t);
+    } catch { /* tentativa de recuperação após três quadros */ }
     self.postMessage({
       type: 'result', bitmap: m.bitmap, t: m.t, ms: performance.now() - t0,
       res: res && { landmarks: res.landmarks, worldLandmarks: res.worldLandmarks, handednesses: res.handednesses || res.handedness },

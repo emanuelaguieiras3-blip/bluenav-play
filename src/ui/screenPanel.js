@@ -2,6 +2,7 @@
 export function screenPanel(app, title) {
   const dialog = document.createElement('dialog');
   dialog.className = 'screen-panel';
+  dialog.setAttribute('aria-label', title);
   const heading = document.createElement('h2'); heading.textContent = title;
   const content = document.createElement('div');
   const close = document.createElement('button'); close.textContent = 'Voltar ao BlueNav'; close.type = 'button';

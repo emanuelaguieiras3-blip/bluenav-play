@@ -1,0 +1,42 @@
+{
+  "boneworks": {
+    "page": "https://store.steampowered.com/app/823500/BONEWORKS/",
+    "asset": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/823500/capsule_616x353.jpg?t=1581381377",
+    "file": "assets/apps/boneworks.jpg"
+  },
+  "bonelab": {
+    "page": "https://store.steampowered.com/app/1592190/BONELAB/",
+    "asset": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/1592190/capsule_616x353.jpg?t=1672959398",
+    "file": "assets/apps/bonelab.jpg"
+  },
+  "gorillatag": {
+    "page": "https://www.gorillatagvr.com/",
+    "asset": "https://cdn.prod.website-files.com/634dcd98720fb26a457ae36f/673756bda746759466bf6931_GT_Web-Thumb-TMUpdate.png",
+    "file": "assets/apps/gorillatag.png"
+  },
+  "roblox": {
+    "page": "https://www.roblox.com/",
+    "asset": "https://images.rbxcdn.com/5348266ea6c5e67b19d6a814cbbb70f6.jpg",
+    "file": "assets/apps/roblox.jpg"
+  },
+  "vrchat": {
+    "page": "https://hello.vrchat.com/",
+    "asset": "http://static1.squarespace.com/static/5f0770791aaf57311515b23d/t/6508c787b8ced41ca3404f36/1718212268632/VRC_Logo.png?format=1500w",
+    "file": "assets/apps/vrchat.png"
+  },
+  "minecraft": {
+    "page": "https://www.vivecraft.org/",
+    "asset": "http://www.vivecraft.org/wp-content/uploads/2016/07/wesYwME.png",
+    "file": "assets/apps/minecraft.png"
+  },
+  "youtube": {
+    "page": "https://www.youtube.com/",
+    "asset": "https://www.youtube.com/img/desktop/yt_1200.png",
+    "file": "assets/apps/youtube.png"
+  },
+  "recroom": {
+    "page": "https://recroom.com/",
+    "file": "assets/apps/recroom.svg",
+    "source": "Locally drawn identification graphic; not downloaded official artwork."
+  }
+}

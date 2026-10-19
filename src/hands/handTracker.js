@@ -1,11 +1,12 @@
 // MediaPipe Hands (21 pontos por mão) via câmera do celular, carregado só quando necessário.
-import { CONFIG } from '../../config.js';
+import { CONFIG, BUNDLED } from '../../config.js';
 import { HandCorrector } from './handCorrector.js';
 import { GeminiAssist } from './geminiAssist.js';
 import { getCamera } from '../core/cameraFeed.js';
 
-const MP = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${CONFIG.MEDIAPIPE_VERSION}`;
-const MODEL = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
+// The Android app ships MediaPipe and the hand model in /vendor so hand tracking works offline.
+const MP = BUNDLED ? new URL('/vendor/mediapipe/tasks-vision', location.href).href : `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${CONFIG.MEDIAPIPE_VERSION}`;
+const MODEL = BUNDLED ? new URL('/vendor/mediapipe/hand_landmarker.task', location.href).href : 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
 const HFOV = CONFIG.CAMERA_HFOV * Math.PI / 180; // campo de visão horizontal da câmera do celular
 
 export class HandTracker {
@@ -24,31 +25,52 @@ export class HandTracker {
     this.minInterval = 0;
     this._lastDetect = 0;
     this.worker = null; this.busy = false; this.mode = null;
+    this.status = 'desligado';
+    this.frameCount = 0;
+    this.emptyFrames = 0;
+    this.lastDetectMs = 0;
+    this.failedFrames = 0;
+    this.startGeneration = 0;
   }
 
   async start({ facing = 'environment', onStatus = () => {} } = {}) {
+    const generation = ++this.startGeneration;
+    this.status = 'abrindo câmera';
     onStatus('Abrindo a câmera…');
     // A mesma câmera e o mesmo quadro para passthrough e detecção.
     this.video = await getCamera(facing);
     this.mirror = facing === 'user';
+    this.status = 'carregando modelo';
     onStatus('Carregando rastreamento de mãos…');
     // 1º: worker (não trava a renderização). 2º: thread principal, se o navegador não suportar.
-    try { await this._startWorker(); this.mode = 'worker'; }
+    try {
+      await this._startWorker();
+      if (generation !== this.startGeneration) { this.worker?.terminate(); this.worker = null; return; }
+      this.mode = 'worker';
+    }
     catch (e) {
+      if (generation !== this.startGeneration) return;
       console.warn('Worker de mãos indisponível, usando a thread principal:', e);
-      const vision = await import(/* @vite-ignore */ `${MP}/vision_bundle.mjs`);
-      const fileset = await vision.FilesetResolver.forVisionTasks(`${MP}/wasm`);
-      const opts = (delegate) => ({
-        baseOptions: { modelAssetPath: MODEL, delegate },
-        runningMode: 'VIDEO', numHands: 2,
-        minHandDetectionConfidence: 0.5, minHandPresenceConfidence: 0.4, minTrackingConfidence: 0.35,
-      });
-      try { this.landmarker = await vision.HandLandmarker.createFromOptions(fileset, opts('GPU')); }
-      catch { this.landmarker = await vision.HandLandmarker.createFromOptions(fileset, opts('CPU')); }
+      await this._startMain();
+      if (generation !== this.startGeneration) { this.landmarker?.close(); this.landmarker = null; return; }
       this.mode = 'main';
     }
     this.running = true;
-    onStatus('Mãos prontas.');
+    this.status = 'aguardando mão';
+    onStatus('Câmera pronta. Mostre a mão para a lente traseira.');
+  }
+
+  async _startMain() {
+    const vision = await import(/* @vite-ignore */ `${MP}/vision_bundle.mjs`);
+    const fileset = await vision.FilesetResolver.forVisionTasks(`${MP}/wasm`);
+    const opts = delegate => ({ baseOptions: { modelAssetPath: MODEL, delegate }, runningMode: 'VIDEO', numHands: 2,
+      minHandDetectionConfidence: 0.5, minHandPresenceConfidence: 0.4, minTrackingConfidence: 0.35 });
+    let model;
+    const gpu = vision.HandLandmarker.createFromOptions(fileset, opts('GPU'));
+    try { model = await Promise.race([gpu, new Promise((_, reject) => setTimeout(() => reject(new Error('GPU lento')), 6000))]); }
+    catch { gpu.then(late => late.close(), () => {}); model = await vision.HandLandmarker.createFromOptions(fileset, opts('CPU')); }
+    if (!this.running && this.mode === 'recovering') model.close();
+    else this.landmarker = model;
   }
 
   _startWorker() {
@@ -69,19 +91,32 @@ export class HandTracker {
 
   _onResult(m) {
     this.busy = false;
-    if (!this.running || performance.now() - m.t > 200 || !m.res) { m.bitmap?.close(); return; }
+    const receivedAt = performance.now();
+    if (!this.running || receivedAt - m.t > 800) { m.bitmap?.close(); return; }
+    if (!m.res) {
+      this.status = 'reiniciando detector';
+      if (++this.failedFrames >= 3 && this.mode === 'worker') {
+        this.worker?.terminate(); this.worker = null; this.mode = 'recovering';
+        this._startMain().then(() => { if (this.running) { this.mode = 'main'; this.status = 'detector recuperado'; } })
+          .catch(error => { this.status = 'falha no detector: ' + error.message; });
+      }
+      m.bitmap?.close(); return;
+    }
+    this.failedFrames = 0;
+    this.lastDetectMs = Math.max(0, receivedAt - m.t);
     this.detectMs = this.detectMs * 0.85 + m.ms * 0.15;
     // acompanha até 60 Hz; se o celular não der conta, espaça só o necessário
     this.minInterval = Math.max(15, Math.min(50, this.detectMs * 0.85));
-    const dt = this.lastT ? (m.t - this.lastT) / 1000 : 1 / 30;
-    this.lastT = m.t;
+    const dt = this.lastT ? (receivedAt - this.lastT) / 1000 : 1 / 30;
+    this.lastT = receivedAt;
     try {
-      this._process(m.res, dt, m.t, m.bitmap ? m.bitmap.height / m.bitmap.width : undefined);
+      this._process(m.res, dt, receivedAt, m.bitmap ? m.bitmap.height / m.bitmap.width : undefined);
       if (m.bitmap) this.onFrame?.(m.bitmap);
     } finally { m.bitmap?.close(); }
   }
 
   stop() {
+    this.startGeneration++;
     this.running = false;
     this.worker?.terminate();
     this.worker = null; this.busy = false; this.hands = []; this.history = []; this.slots = null;
@@ -101,9 +136,13 @@ export class HandTracker {
   }
 
   update(now) {
-    if (this.slots) this.hands = this.hands.filter((h) => now - this.slots[h.id].lastSeen < 150)
-      .map((h) => now - this.slots[h.id].lastSeen > 80 && !h.stale ? { ...h, stale: true } : h);
-    if (!this.running || this.video.readyState < 2) return;
+    const expiry = Math.max(150, Math.min(600, this.lastDetectMs * 2));
+    if (this.slots) this.hands = this.hands.filter((h) => now - this.slots[h.id].lastSeen < expiry)
+      .map((h) => now - this.slots[h.id].lastSeen > Math.max(80, expiry / 2) && !h.stale ? { ...h, stale: true } : h);
+    if (!this.running || this.mode === 'recovering' || this.video.readyState < 2) return;
+    if (this.video.srcObject?.getVideoTracks?.().every(track => track.readyState === 'ended')) {
+      this.status = 'câmera interrompida'; return;
+    }
     if (this.video.currentTime === this.lastVideoTime) return;
     if (now - this._lastDetect < this.minInterval) return;
     if (this.mode === 'worker') {
@@ -134,6 +173,7 @@ export class HandTracker {
     this._lastDetect = now;
     const dt = this.lastT ? (now - this.lastT) / 1000 : 1 / 30;
     this.lastT = now;
+    this.lastDetectMs = performance.now() - t0;
     this._process(res, dt, now, frame.height / frame.width);
     this.onFrame?.(frame);
   }
@@ -147,9 +187,14 @@ export class HandTracker {
     const f = 1 / (2 * Math.tan(hfov / 2)); // focal em unidades da largura da imagem
     const sx = this.mirror ? -1 : 1;
     const n = res.landmarks ? res.landmarks.length : 0;
+    this.frameCount++;
+    this.emptyFrames = n ? 0 : this.emptyFrames + 1;
+    this.status = n ? `${n} mão${n === 1 ? '' : 's'} detectada${n === 1 ? '' : 's'}` : 'câmera ativa, procurando mãos';
     const dets = [];
     for (let h = 0; h < n; h++) {
-      const lm = res.landmarks[h], wl = res.worldLandmarks?.[h];
+      const lm = res.landmarks[h];
+      const scale = lm?.length === 21 ? 0.08 / Math.max(0.02, Math.hypot(lm[5].x - lm[17].x, lm[5].y - lm[17].y)) : 0;
+      const wl = res.worldLandmarks?.[h] || lm?.map(p => ({ x: (p.x - lm[0].x) * scale, y: (p.y - lm[0].y) * scale, z: (p.z - lm[0].z) * scale }));
       if (!lm || !wl || lm.length !== 21 || wl.length !== 21 ||
           ![...lm, ...wl].every((p) => [p.x, p.y, p.z].every(Number.isFinite))) continue;
       const cat = res.handednesses?.[h]?.[0] || res.handedness?.[h]?.[0] || { categoryName: 'Right', score: 0.8 };
@@ -170,6 +215,7 @@ export class HandTracker {
       const effRight = (cat.categoryName === 'Left') !== this.mirror;
       dets.push({ lm, wl, d, guess, score: cat.score ?? 0.9, effRight });
     }
+    if (n && !dets.length) this.status = 'pontos da mão incompletos';
 
     // Associa cada detecção à mão rastreada mais próxima (o rótulo esquerda/direita
     // do MediaPipe pisca entre frames e não serve para isso)
@@ -217,7 +263,7 @@ export class HandTracker {
       const c = sl.corrector;
       // Anatomy correction remains for gestures. Visible joints stay on the
       // observed image rays: bone constraints must never shift their pixels.
-      sl.out = { id: sl.id, label: chir > 0 ? 'Right' : 'Left', pontos: pts, imageAligned: true, imageLandmarks: lm, imageAspect: ar, gesto: r.gesto, confianca: r.confianca, pinchDist: c.pinchDist, pinchStrength: c.pinchStrength, palmFacing: c.palmFacing, raw: pts, stale: false };
+      sl.out = { id: sl.id, label: chir > 0 ? 'Right' : 'Left', pontos: pts, imageAligned: true, imageLandmarks: lm, imageAspect: ar, gesto: r.gesto, confianca: r.confianca, pinchDist: c.pinchDist, pinchStrength: c.pinchStrength, palmFacing: c.palmFacing, touchProfile: this.gemini.enabled ? c.touchProfile : null, raw: pts, stale: false };
     }
 
     // Perda de rastreamento por instantes (mão passa rápido, borrão): mantém a última pose
@@ -244,6 +290,7 @@ export class HandTracker {
       this.gemini.maybeSend(performance.now(), this.history.slice(), main.gesto, (res2) => {
         if (this.running && slot.generation === generation && performance.now() - slot.lastSeen < 200) {
           corr.applyReference(res2.pontosCorrigidos, res2.confianca);
+          corr.applyTouchReference(res2.toque, res2.confianca);
         }
       });
     }

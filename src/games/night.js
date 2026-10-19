@@ -9,7 +9,7 @@ export default {
     const R = 26;
     ctx.teleport({ enabled: true, walk: true, check: (p) => Math.hypot(p.x, p.z) < R - 1 && !trunks.some((t) => Math.hypot(t.x - p.x, t.z - p.z) < 0.8) });
 
-    root.add(new THREE.Mesh(new THREE.CircleGeometry(R + 20, 48).rotateX(-Math.PI / 2), std({ map: tex.get('forestFloor'), color: '#9a8a7a', roughness: 1 })));
+    root.add(new THREE.Mesh(new THREE.PlaneGeometry((R + 20) * 2, (R + 20) * 2, 48, 48).rotateX(-Math.PI / 2), std({ map: tex.get('forestFloor'), color: '#9a8a7a', roughness: 1 })));
     // lua fina
     const moon = new THREE.Mesh(new THREE.RingGeometry(3.2, 4, 40, 1, -0.9, 1.8), new THREE.MeshBasicMaterial({ color: '#dfe6ff', fog: false, side: THREE.DoubleSide }));
     moon.position.set(-60, 70, -120); moon.lookAt(0, 0, 0); root.add(moon);
@@ -66,8 +66,12 @@ export default {
     }
     // silhuetas que se movem devagar no escuro e somem sob a luz
     const shadowMat = new THREE.MeshBasicMaterial({ color: '#000000', transparent: true, opacity: 0.9 });
+    const shroudGeometry = new THREE.LatheGeometry([[.36,.025],[.29,.34],[.25,.76],[.24,1.04],[.14,1.23],[.06,1.27],[0,1.27]].map(p => new THREE.Vector2(...p)), 14);
+    const hoodGeometry = new THREE.SphereGeometry(.21, 14, 10).scale(.9, 1.18, .88);
     const shades = Array.from({ length: 5 }, (_, i) => {
-      const s = new THREE.Mesh(new THREE.CapsuleGeometry(0.25, 1.2, 4, 8).translate(0, 0.85, 0), shadowMat.clone());
+      const s = new THREE.Mesh(shroudGeometry, shadowMat.clone()); s.name = 'cloaked-shade';
+      const hood = new THREE.Mesh(hoodGeometry, s.material); hood.position.set(0, 1.40, 0); s.add(hood);
+      s.scale.set(1 + i * .04, .91 + i * .045, 1);
       const a = Math.random() * 6.28; s.position.set(Math.cos(a) * 14, 0, Math.sin(a) * 14);
       s.userData = { a, r: 12 + i * 2, sp: 0.02 + Math.random() * 0.03 }; root.add(s); return s;
     });
